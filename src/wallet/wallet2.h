@@ -58,6 +58,7 @@
 #include "wallet_errors.h"
 #include "common/password.h"
 #include "node_rpc_proxy.h"
+#include "mms.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.wallet2"
@@ -1170,6 +1171,9 @@ namespace tools
     bool unblackball_output(const std::pair<uint64_t, uint64_t> &output);
     bool is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const;
 
+    // MMS -------------------------------------------------------------------------------------------------
+    message_store& get_message_store() { return m_message_store; };
+
     bool lock_keys_file();
     bool unlock_keys_file();
     bool is_keys_file_locked() const;
@@ -1256,6 +1260,7 @@ namespace tools
     std::string m_daemon_address;
     std::string m_wallet_file;
     std::string m_keys_file;
+    std::string m_mms_file;
     epee::net_utils::http::http_simple_client m_http_client;
     hashchain m_blockchain;
     std::unordered_map<crypto::hash, unconfirmed_transfer_details> m_unconfirmed_txs;
@@ -1348,6 +1353,11 @@ namespace tools
 
     uint64_t m_last_block_reward;
     std::unique_ptr<tools::file_locker> m_keys_file_locker;
+    
+    message_store m_message_store;
+    bool m_original_keys_available;
+    cryptonote::account_public_address m_original_address;
+    crypto::secret_key m_original_view_secret_key;
 
     crypto::chacha_key m_cache_key;
     boost::optional<epee::wipeable_string> m_encrypt_keys_after_refresh;
