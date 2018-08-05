@@ -359,13 +359,14 @@ namespace cryptonote
     uint32_t m_current_subaddress_account;
     
     // MMS
-    tools::message_store& get_message_store() const { return m_wallet->get_message_store(); };
+    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
+    mms::multisig_wallet_state get_multisig_wallet_state() const { return m_wallet->get_multisig_wallet_state(); };
     bool mms_active() const { return get_message_store().is_active(); };
-    bool choose_mms_processing(const std::vector<tools::processing_data> &data_list, uint32_t &choice);
-    void list_mms_messages(const std::vector<tools::message> &messages);
+    bool choose_mms_processing(const std::vector<mms::processing_data> &data_list, uint32_t &choice);
+    void list_mms_messages(const std::vector<mms::message> &messages);
     void ask_send_all_ready_messages();
     bool user_confirms(const std::string &question);
-    bool get_message_from_arg(const std::string &arg, tools::message &m);
+    bool get_message_from_arg(const std::string &arg, mms::message &m);
     
     void mms_init(const std::vector<std::string> &args);
     void mms_info(const std::vector<std::string> &args);

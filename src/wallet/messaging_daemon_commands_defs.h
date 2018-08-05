@@ -22,7 +22,7 @@ namespace messaging_daemon_rpc
     uint32_t type;
     std::string content;
     crypto::hash hash;
-    std::string signature;
+    crypto::signature signature;
     std::string transport_id;
     
     BEGIN_KV_SERIALIZE_MAP()
@@ -36,7 +36,7 @@ namespace messaging_daemon_rpc
       KV_SERIALIZE(type)
       KV_SERIALIZE(content)
       KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(hash)
-      KV_SERIALIZE(signature)
+      KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(signature)
       KV_SERIALIZE(transport_id)
     END_KV_SERIALIZE_MAP()
   };

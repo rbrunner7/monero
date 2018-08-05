@@ -58,7 +58,7 @@
 #include "wallet_errors.h"
 #include "common/password.h"
 #include "node_rpc_proxy.h"
-#include "mms.h"
+#include "message_store.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.wallet2"
@@ -501,6 +501,7 @@ namespace tools
       std::vector<is_out_data> primary;
       std::vector<is_out_data> additional;
     };
+
 
     /*!
      * \brief  Generates a wallet or restores one.
@@ -1172,7 +1173,8 @@ namespace tools
     bool is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const;
 
     // MMS -------------------------------------------------------------------------------------------------
-    message_store& get_message_store() { return m_message_store; };
+    mms::message_store& get_message_store() { return m_message_store; };
+    mms::multisig_wallet_state get_multisig_wallet_state();
 
     bool lock_keys_file();
     bool unlock_keys_file();
@@ -1354,7 +1356,7 @@ namespace tools
     uint64_t m_last_block_reward;
     std::unique_ptr<tools::file_locker> m_keys_file_locker;
     
-    message_store m_message_store;
+    mms::message_store m_message_store;
     bool m_original_keys_available;
     cryptonote::account_public_address m_original_address;
     crypto::secret_key m_original_view_secret_key;

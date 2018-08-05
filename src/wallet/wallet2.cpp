@@ -796,7 +796,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended):
   m_light_wallet_balance(0),
   m_light_wallet_unlocked_balance(0),
   m_original_keys_available(false),
-  m_message_store(this),
+  m_message_store(),
   m_key_device_type(hw::device::device_type::SOFTWARE),
   m_ring_history_saved(false),
   m_ringdb(),
@@ -11466,24 +11466,26 @@ void wallet2::generate_genesis(cryptonote::block& b) const {
 
 */
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_wallet_state(wallet_state &state)
+mms::multisig_wallet_state wallet2::get_multisig_wallet_state()
 {
-  state.address = m_account.get_keys().m_account_address;
+  mms::multisig_wallet_state state;
   state.nettype = m_nettype;
-  state.view_secret_key = m_account.get_keys().m_view_secret_key;
   state.multisig = multisig(&state.multisig_is_ready);
   state.has_multisig_partial_key_images = has_multisig_partial_key_images();
   state.num_transfer_details = m_transfers.size();
-  state.original_keys_available = m_original_keys_available;
-  if (m_original_keys_available)
+  if (state.multisig)
   {
-    state.original_address = m_original_address;
-    state.original_view_secret_key = m_original_view_secret_key;
+    THROW_WALLET_EXCEPTION_IF(!m_original_keys_available, error::wallet_internal_error, "MMS use not possible because own original Monero address not available");
+    state.address = m_original_address;
+    state.view_secret_key = m_original_view_secret_key;
   }
+  else
+  {
+    state.address = m_account.get_keys().m_account_address;
+    state.view_secret_key = m_account.get_keys().m_view_secret_key;
+  }
+  return state;
 }
-void wallet2::get_num_transfer_details(size_t &num)
-{
-  num = m_transfers.size();
-}
+
 
 }

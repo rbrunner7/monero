@@ -64,7 +64,7 @@
 #include "wallet/wallet_args.h"
 #include "version.h"
 #include <stdexcept>
-#include "wallet/mms.h"
+#include "wallet/message_store.h"
 
 #ifdef WIN32
 #include <boost/locale.hpp>
@@ -915,7 +915,7 @@ bool simple_wallet::prepare_multisig(const std::vector<std::string> &args)
   
   if (by_mms)
   {
-    get_message_store().process_wallet_created_data(tools::message_type_key_set, multisig_info);
+    get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::key_set, multisig_info);
   }
   
   m_command_successful = true;
@@ -983,7 +983,7 @@ bool simple_wallet::make_multisig(const std::vector<std::string> &args)
       success_msg_writer() << tr("Send this multisig info to all other participants, then use finalize_multisig <info1> [<info2>...] with others' multisig info");
       if (by_mms)
       {
-        get_message_store().process_wallet_created_data(tools::message_type_finalizing_key_set, multisig_extra_info);
+        get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::finalizing_key_set, multisig_extra_info);
       }
       m_command_successful = true;
       return true;
@@ -1100,7 +1100,7 @@ bool simple_wallet::export_multisig(const std::vector<std::string> &args)
 
     if (by_mms)
     {
-      get_message_store().process_wallet_created_data(tools::message_type_multisig_sync_data, ciphertext);
+      get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::multisig_sync_data, ciphertext);
     }
     else
     {
@@ -1162,7 +1162,7 @@ bool simple_wallet::import_multisig(const std::vector<std::string> &args)
     }
     else
     {
-      const std::string filename = args[n];
+      const std::string &filename = args[n];
       std::string data;
       bool r = epee::file_io_utils::load_file_to_string(filename, data);
       if (!r)
@@ -1266,12 +1266,12 @@ bool simple_wallet::sign_multisig(const std::vector<std::string> &args)
       }
       if (r)
       {
-	tools::message_type message_type = tools::message_type_fully_signed_tx;
+	mms::message_type message_type = mms::message_type::fully_signed_tx;
 	if (txids.empty())
 	{
-	  message_type = tools::message_type_partially_signed_tx;
+	  message_type = mms::message_type::partially_signed_tx;
 	}
-        get_message_store().process_wallet_created_data(message_type, ciphertext);
+        get_message_store().process_wallet_created_data(get_multisig_wallet_state(), message_type, ciphertext);
 	filename = "MMS";   // for the messages below
 	m_command_successful = true;
       }
@@ -1505,7 +1505,7 @@ bool simple_wallet::user_confirms(const std::string &question)
    return !std::cin.eof() && command_line::is_yes(answer);
 }
 
-bool simple_wallet::choose_mms_processing(const std::vector<tools::processing_data> &data_list, uint32_t &choice)
+bool simple_wallet::choose_mms_processing(const std::vector<mms::processing_data> &data_list, uint32_t &choice)
 {
   uint32_t choices = data_list.size();
   if (choices == 1)
@@ -1513,22 +1513,22 @@ bool simple_wallet::choose_mms_processing(const std::vector<tools::processing_da
     choice = 0;
     return true;
   }
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   success_msg_writer() << tr("Choose processing:");
   std::string text;
   for (size_t i = 0; i < choices; ++i)
   {
-    const tools::processing_data &data = data_list[i];
+    const mms::processing_data &data = data_list[i];
     text = std::to_string(i+1) + ": ";
     switch (data.processing)
     {
-    case tools::message_processing_sign_tx:
+    case mms::message_processing::sign_tx:
       text += tr("Sign tx");
       break;
-    case tools::message_processing_send_tx:
+    case mms::message_processing::send_tx:
     {
-      tools::message m = ms.get_message_by_id(data.message_ids[0]);
-      if (m.type == tools::message_type_fully_signed_tx)
+      mms::message m = ms.get_message_by_id(data.message_ids[0]);
+      if (m.type == mms::message_type::fully_signed_tx)
       {
         text += tr("Send the tx for submission to ");
       }
@@ -1536,11 +1536,11 @@ bool simple_wallet::choose_mms_processing(const std::vector<tools::processing_da
       {
         text += tr("Send the tx for signing to ");
       }
-      tools::coalition_member member = ms.get_member(data.receiving_member_index);
+      mms::coalition_member member = ms.get_member(data.receiving_member_index);
       text += ms.member_to_string(member, 50);
       break;
     }
-    case tools::message_processing_submit_tx:
+    case mms::message_processing::submit_tx:
       text += tr("Submit tx");
       break;
     default:
@@ -1575,36 +1575,41 @@ bool simple_wallet::choose_mms_processing(const std::vector<tools::processing_da
   return choice_ok;
 }
 
-void simple_wallet::list_mms_messages(const std::vector<tools::message> &messages)
+static std::string get_human_readable_timestamp(uint64_t ts);
+static std::string get_human_readable_timespan(std::chrono::seconds seconds);
+
+void simple_wallet::list_mms_messages(const std::vector<mms::message> &messages)
 {
-  success_msg_writer() << boost::format("%4s %-6s %-40s %-25s %7s %-25s") % tr("Id") % tr("In/Out") % tr("Coalition Member")
-	  % tr("Message Type") % tr("Height") % tr("Message State");
-  tools::message_store& ms = m_wallet->get_message_store();
+  success_msg_writer() << boost::format("%4s %-4s %-30s %-21s %7s %-15s %-40s") % tr("Id") % tr("I/O") % tr("Coalition Member")
+	  % tr("Message Type") % tr("Height") % tr("Message State") % tr("Since");
+  mms::message_store& ms = m_wallet->get_message_store();
+  uint64_t now = time(NULL);
   for (size_t i = 0; i < messages.size(); ++i)
   {
-    const tools::message &m = messages[i];
-    const tools::coalition_member &member = ms.get_member(m.member_index);
-    bool highlight = (m.state == tools::message_state_ready_to_send) || (m.state == tools::message_state_waiting);
-    message_writer(m.direction == tools::message_direction_out ? console_color_green : console_color_magenta, highlight) <<
-	    boost::format("%4s %-6s %-40s %-25s %7s %-25s") %
+    const mms::message &m = messages[i];
+    const mms::coalition_member &member = ms.get_member(m.member_index);
+    bool highlight = (m.state == mms::message_state::ready_to_send) || (m.state == mms::message_state::waiting);
+    message_writer(m.direction == mms::message_direction::out ? console_color_green : console_color_magenta, highlight) <<
+	    boost::format("%4s %-4s %-30s %-21s %7s %-15s %-40s") %
 	    m.id %
 	    ms.message_direction_to_string(m.direction) %
-	    ms.member_to_string(member, 40) %
+	    ms.member_to_string(member, 30) %
 	    ms.message_type_to_string(m.type) %
 	    m.wallet_height %
-	    ms.message_state_to_string(m.state);
+	    ms.message_state_to_string(m.state) %
+	    (get_human_readable_timestamp(m.modified) + ", " + get_human_readable_timespan(std::chrono::seconds(now - m.modified)) + tr(" ago"));
   }
 }
 
 void simple_wallet::ask_send_all_ready_messages()
 {
-  tools::message_store& ms = m_wallet->get_message_store();
-  std::vector<tools::message> ready_messages;
-  const std::vector<tools::message> &messages = ms.get_all_messages();
+  mms::message_store& ms = m_wallet->get_message_store();
+  std::vector<mms::message> ready_messages;
+  const std::vector<mms::message> &messages = ms.get_all_messages();
   for (size_t i = 0; i < messages.size(); ++i)
   {
-    const tools::message &m = messages[i];
-    if (m.state == tools::message_state_ready_to_send)
+    const mms::message &m = messages[i];
+    if (m.state == mms::message_state::ready_to_send)
     {
       ready_messages.push_back(m);
     }
@@ -1616,16 +1621,16 @@ void simple_wallet::ask_send_all_ready_messages()
     {
       for (size_t i = 0; i < ready_messages.size(); ++i)
       {
-	ms.send_message(ready_messages[i].id);
+	ms.send_message(get_multisig_wallet_state(), ready_messages[i].id);
 	ms.set_message_processed_or_sent(ready_messages[i].id);
       }
     }
   }
 }
 
-bool simple_wallet::get_message_from_arg(const std::string &arg, tools::message &m)
+bool simple_wallet::get_message_from_arg(const std::string &arg, mms::message &m)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   bool valid_id = false;
   uint32_t id;
   try
@@ -1651,7 +1656,7 @@ void simple_wallet::mms_init(const std::vector<std::string> &args)
     fail_msg_writer() << tr("usage: mms init <threshold>/<coalition_size> <own_transport_address>");
     return;
   }
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   if (ms.is_active())
   {
     if (!user_confirms(tr("The MMS is already initialized. Re-initialize by deleting all member info and messages?")))
@@ -1696,20 +1701,20 @@ void simple_wallet::mms_init(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Error in threshold and/or coalition size");
     return;
   }
-  ms.init(m_wallet.get(), args[2], coalition_size, threshold);
+  ms.init(get_multisig_wallet_state(), args[2], coalition_size, threshold);
 }
 
 void simple_wallet::mms_info(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   success_msg_writer() << boost::format("The MMS is active for %s/%s multisig.")
 	  % ms.get_threshold() % ms.get_coalition_size();
 }
 
 void simple_wallet::mms_member(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
-  const std::vector<tools::coalition_member> &members = ms.get_all_members();
+  mms::message_store& ms = m_wallet->get_message_store();
+  const std::vector<mms::coalition_member> &members = ms.get_all_members();
   if (args.size() == 1)
   {
     // Without parameters list all defined members
@@ -1717,7 +1722,7 @@ void simple_wallet::mms_member(const std::vector<std::string> &args)
     success_msg_writer() << boost::format("%-20s %-s") % "" % tr("Transport Address");
     for (size_t i = 0; i < members.size(); ++i)
     {
-      const tools::coalition_member &member = members[i];
+      const mms::coalition_member &member = members[i];
       success_msg_writer() << boost::format("%-20s %-s") %
 	      member.label %
 	      get_account_address_as_str(m_wallet->nettype(), false, member.monero_address);
@@ -1750,25 +1755,25 @@ void simple_wallet::mms_member(const std::vector<std::string> &args)
 
 void simple_wallet::mms_list(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   if (args.size() != 1)
   {
     fail_msg_writer() << tr("Usage: mms list");
     return;
   }
-  const std::vector<tools::message> &messages = ms.get_all_messages();
+  const std::vector<mms::message> &messages = ms.get_all_messages();
   list_mms_messages(messages);
 }
 
 void simple_wallet::mms_next(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   if ((args.size() > 2) || ((args.size() == 2) && (args[1] != "sync")))
   {
     fail_msg_writer() << tr("Usage: mms next [sync]");
     return;
   }
-  std::vector<tools::processing_data> data_list;
+  std::vector<mms::processing_data> data_list;
   bool force_sync = false;
   if ((args.size() > 1) && (args[1] == "sync"))
   {
@@ -1777,7 +1782,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
     force_sync = true;
   }
   string wait_reason;
-  bool avail = ms.get_processable_messages(force_sync, data_list, wait_reason);
+  bool avail = ms.get_processable_messages(get_multisig_wallet_state(), force_sync, data_list, wait_reason);
   uint32_t choice = 0;
   if (avail)
   {
@@ -1789,17 +1794,17 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
   }
   if (avail)
   {
-    tools::processing_data data = data_list[choice];
+    mms::processing_data data = data_list[choice];
     m_command_successful = false;
     switch(data.processing)
     {
-    case tools::message_processing_prepare_multisig:
+    case mms::message_processing::prepare_multisig:
       success_msg_writer() << tr("prepare_multisig");
       m_called_by_mms = true;
       prepare_multisig(std::vector<std::string>());
       break;
 
-    case tools::message_processing_make_multisig:
+    case mms::message_processing::make_multisig:
     {
       success_msg_writer() << tr("make_multisig");
       uint32_t number_of_key_sets = data.message_ids.size();
@@ -1807,7 +1812,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       sig_args[0] = std::to_string(ms.get_threshold());
       for (size_t i = 0; i < number_of_key_sets; ++i)
       {
-	tools::message m = ms.get_message_by_id(data.message_ids[i]);
+	mms::message m = ms.get_message_by_id(data.message_ids[i]);
 	sig_args[i+1] = m.content;
       }
       m_called_by_mms = true;
@@ -1815,7 +1820,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       break;
     }
 
-    case tools::message_processing_finalize_multisig:
+    case mms::message_processing::finalize_multisig:
     {
       success_msg_writer() << tr("finalize_multisig");
       uint32_t number_of_key_sets = data.message_ids.size();
@@ -1823,7 +1828,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       std::vector<std::string> sig_args(number_of_key_sets);
       for (size_t i = 0; i < number_of_key_sets; ++i)
       {
-	tools::message m = ms.get_message_by_id(data.message_ids[i]);
+	mms::message m = ms.get_message_by_id(data.message_ids[i]);
 	sig_args[i] = m.content;
       }
       m_called_by_mms = true;
@@ -1831,7 +1836,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       break;
     }
 
-    case tools::message_processing_create_sync_data:
+    case mms::message_processing::create_sync_data:
     {
       success_msg_writer() << tr("export_multisig_info");
       std::vector<std::string> export_args;
@@ -1841,13 +1846,13 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       break;
     }
 
-    case tools::message_processing_process_sync_data:
+    case mms::message_processing::process_sync_data:
     {
       success_msg_writer() << tr("import_multisig_info");
       std::vector<std::string> import_args;
       for (size_t i = 0; i < data.message_ids.size(); ++i)
       {
-	tools::message m = ms.get_message_by_id(data.message_ids[i]);
+	mms::message m = ms.get_message_by_id(data.message_ids[i]);
 	import_args.push_back(m.content);
       }
       m_called_by_mms = true;
@@ -1855,33 +1860,33 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
       break;
     }
 
-    case tools::message_processing_sign_tx:
+    case mms::message_processing::sign_tx:
     {
       success_msg_writer() << tr("sign_multisig");
       std::vector<std::string> sign_args;
-      tools::message m = ms.get_message_by_id(data.message_ids[0]);
+      mms::message m = ms.get_message_by_id(data.message_ids[0]);
       sign_args.push_back(m.content);
       m_called_by_mms = true;
       sign_multisig(sign_args);
       break;
     }
 
-    case tools::message_processing_submit_tx:
+    case mms::message_processing::submit_tx:
     {
       success_msg_writer() << tr("submit_multisig");
       std::vector<std::string> submit_args;
-      tools::message m = ms.get_message_by_id(data.message_ids[0]);
+      mms::message m = ms.get_message_by_id(data.message_ids[0]);
       submit_args.push_back(m.content);
       m_called_by_mms = true;
       submit_multisig(submit_args);
       break;
     }
 
-    case tools::message_processing_send_tx:
+    case mms::message_processing::send_tx:
     {
       success_msg_writer() << tr("send tx");
-      tools::message m = ms.get_message_by_id(data.message_ids[0]);
-      ms.add_message(data.receiving_member_index, m.type, tools::message_direction_out,
+      mms::message m = ms.get_message_by_id(data.message_ids[0]);
+      ms.add_message(get_multisig_wallet_state(), data.receiving_member_index, m.type, mms::message_direction::out,
 		     m.content);
       m_command_successful = true;
       break;
@@ -1901,7 +1906,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
 
 void simple_wallet::mms_sync(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   if (args.size() != 1)
   {
     fail_msg_writer() << tr("Usage: mms sync");
@@ -1910,7 +1915,7 @@ void simple_wallet::mms_sync(const std::vector<std::string> &args)
   // Force the start of a new sync round, for exceptional cases where something went wrong
   // Can e.g. solve the problem "This signature was made with stale data" after trying to
   // create 2 transactions in a row somehow
-  // Code is identical to the code for 'message_processing_create_sync_data'
+  // Code is identical to the code for 'message_processing::create_sync_data'
   success_msg_writer() << tr("export_multisig_info");
   std::vector<std::string> export_args;
   export_args.push_back("MMS");  // dummy filename
@@ -1930,7 +1935,7 @@ void simple_wallet::mms_transfer(const std::vector<std::string> &args)
 
 void simple_wallet::mms_delete(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
+  mms::message_store& ms = m_wallet->get_message_store();
   if (args.size() != 2)
   {
     fail_msg_writer() << tr("Usage: mms delete <message_id> | all");
@@ -1945,7 +1950,7 @@ void simple_wallet::mms_delete(const std::vector<std::string> &args)
   }
   else
   {
-    tools::message m;
+    mms::message m;
     bool valid_id = get_message_from_arg(args[1], m);
     if (valid_id)
     {
@@ -1967,14 +1972,14 @@ void simple_wallet::mms_send(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Usage: mms send [<message_id>]");
     return;
   }
-  tools::message_store& ms = m_wallet->get_message_store();
-  tools::message m;
+  mms::message_store& ms = m_wallet->get_message_store();
+  mms::message m;
   bool valid_id = get_message_from_arg(args[1], m);
   if (valid_id)
   {
     // "Send" a message to a wallet by writing it as a file into the directory given as transport address
     // for debugging purposes      
-    ms.send_message(m.id);
+    ms.send_message(get_multisig_wallet_state(), m.id);
   }
 }
 
@@ -2011,83 +2016,92 @@ void simple_wallet::mms_debug(const std::vector<std::string> &args)
 
 bool simple_wallet::mms(const std::vector<std::string> &args)
 {
-  tools::message_store& ms = m_wallet->get_message_store();
-  if (args.size() == 0)
+  try
   {
-    if (ms.is_active())
+    mms::message_store& ms = m_wallet->get_message_store();
+    if (args.size() == 0)
+    {
+      if (ms.is_active())
+      {
+	mms_info(args);
+      }
+      else
+      {
+	success_msg_writer() << tr("The MMS is not active.");
+      }
+    }
+    else if (args[0] == "init")
+    {
+      mms_init(args);
+    }
+    else if (!ms.is_active())
+    {
+      fail_msg_writer() << tr("The MMS is not active. Activate using the \"mms init\" command");
+    }
+    else if (args[0] == "info")
     {
       mms_info(args);
     }
-    else
+    else if (args[0] == "member")
     {
-      success_msg_writer() << tr("The MMS is not active.");
+      mms_member(args);
     }
+    else if (args[0] == "list")
+    {
+      mms_list(args);
+    }
+    else if (args[0] == "next")
+    {
+      mms_next(args);
+    }
+
+    /*
+    else if (args[0] == "add_message")
+    {
+      // Add an arbitrary "in" message for debugging purposes, e.g. put in a "MultisigV1...." key set string
+      // mms add_message <member_index_as_int> <message_type_as_int> <message_content_as_string>
+      uint32_t member_index = (uint32_t)(std::stoi(args[1]));
+      tools::message_type message_type = (tools::message_type)(uint32_t)(std::stoi(args[2]));
+      ms.add_message(member_index, message_type, tools::message_direction_in,
+		     m_wallet->get_num_transfer_details(), args[3]);
+    }
+    */
+
+    else if (args[0] == "sync")
+    {
+      mms_sync(args);
+    }
+    else if (args[0] == "transfer")
+    {
+      mms_transfer(args);
+    }
+    else if (args[0] == "delete")
+    {
+      mms_delete(args);
+    }
+    else if (args[0] == "send")
+    {
+      mms_send(args);
+    }
+    else if (args[0] == "receive")
+    {
+      // "Receive" a message to me by reading it from a file in the directory given as own transport address
+      // for debugging purposes
+      ms.receive_message(get_multisig_wallet_state());
+    }
+    else if (args[0] == "debug")
+    {
+      mms_debug(args);
+    }
+  }
+  catch (const tools::error::no_connection_to_daemon &e)
+  {
+    fail_msg_writer() << "Error in MMS command: " << e.what() << " " << e.request();
+  }
+  catch (const std::exception &e)
+  {
+    fail_msg_writer() << "Error in MMS command: " << e.what();
     return true;
-  }
-  if (args[0] == "init")
-  {
-    mms_init(args);
-    return true;
-  }
-  if (!ms.is_active())
-  {
-    fail_msg_writer() << tr("The MMS is not active. Activate using the \"mms init\" command");
-    return true;
-  }
-  if (args[0] == "info")
-  {
-    mms_info(args);
-  }
-  else if (args[0] == "member")
-  {
-    mms_member(args);
-  }
-  else if (args[0] == "list")
-  {
-    mms_list(args);
-  }
-  else if (args[0] == "next")
-  {
-    mms_next(args);
-  }
-  
-  /*
-  else if (args[0] == "add_message")
-  {
-    // Add an arbitrary "in" message for debugging purposes, e.g. put in a "MultisigV1...." key set string
-    // mms add_message <member_index_as_int> <message_type_as_int> <message_content_as_string>
-    uint32_t member_index = (uint32_t)(std::stoi(args[1]));
-    tools::message_type message_type = (tools::message_type)(uint32_t)(std::stoi(args[2]));
-    ms.add_message(member_index, message_type, tools::message_direction_in,
-		   m_wallet->get_num_transfer_details(), args[3]);
-  }
-  */
-  
-  else if (args[0] == "sync")
-  {
-    mms_sync(args);
-  }
-  else if (args[0] == "transfer")
-  {
-    mms_transfer(args);
-  }
-  else if (args[0] == "delete")
-  {
-    mms_delete(args);
-  }
-  else if (args[0] == "send")
-  {
-    mms_send(args);
-  }
-  else if (args[0] == "receive")
-  {
-    // "Receive" a message to me by reading it from a file in the directory given as own transport address
-    // for debugging purposes
-    ms.receive_message();
-  }
-  else if (args[0] == "debug")
-  {
-    mms_debug(args);
   }
   return true;
 }
@@ -5846,7 +5860,7 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
 	std::string ciphertext = m_wallet->save_multisig_tx(ptx_vector);
 	if (!ciphertext.empty())
 	{
-          get_message_store().process_wallet_created_data(tools::message_type_partially_signed_tx, ciphertext);
+          get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::partially_signed_tx, ciphertext);
 	  success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to MMS");
 	  m_command_successful = true;
 	}
@@ -7767,7 +7781,7 @@ void simple_wallet::wallet_idle_thread()
     // @@@ MMS, debugging
     if (get_message_store().is_active())
     {
-      bool new_message = get_message_store().receive_message();
+      bool new_message = get_message_store().receive_message(get_multisig_wallet_state());
       if (new_message)
       {
 	message_writer(console_color_magenta, true) << tr("MMS received new message");
