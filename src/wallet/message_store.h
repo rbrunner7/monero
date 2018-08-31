@@ -136,6 +136,8 @@ namespace mms
     void init(const multisig_wallet_state &state,
               const std::string &own_transport_address, uint32_t coalition_size, uint32_t threshold);
     void set_active(bool active) { m_active = active; };
+    void set_options(const boost::program_options::variables_map& vm);
+    void set_options(const std::string &bitmessage_address, const std::string &bitmessage_login);
     bool is_active() const { return m_active; };
     uint32_t get_threshold() const { return m_threshold; };
     uint32_t get_coalition_size() const { return m_coalition_size; };
@@ -172,14 +174,15 @@ namespace mms
                          uint32_t member_index, message_type type, message_direction direction, 
                          const std::string &content);
     const std::vector<message> &get_all_messages() const { return m_messages; };
-    message get_message_by_id(uint32_t id);
+    bool get_message_by_id(uint32_t id, message &m) const;
+    message get_message_by_id(uint32_t id) const;
     void set_message_processed_or_sent(uint32_t id);
     void delete_message(uint32_t id);
     void delete_all_messages();
     
-    // Debugging support: Read and write the contents of single messages into files for "sending" and "receiving" them
     void send_message(const multisig_wallet_state &state, uint32_t id);
-    bool receive_message(const multisig_wallet_state &state);
+    bool check_for_messages(const multisig_wallet_state &state);
+    void stop() { m_run.store(false, std::memory_order_relaxed); m_transporter.stop(); }
     
     void write_to_file(const std::string &filename);
     void read_from_file(const std::string &filename);
@@ -199,12 +202,13 @@ namespace mms
       a & m_next_message_id;
     }
 
-    const char *message_type_to_string(message_type type);
-    const char *message_direction_to_string(message_direction direction);
-    const char *message_state_to_string(message_state state);
+    const char* message_type_to_string(message_type type);
+    const char* message_direction_to_string(message_direction direction);
+    const char* message_state_to_string(message_state state);
     std::string member_to_string(const coalition_member &member, uint32_t max_width);
     
     static const char *tr(const char *str) { return i18n_translate(str, "tools::mms"); }
+    static void init_options(boost::program_options::options_description& desc_params);
 
   private:
     bool m_active;
@@ -216,8 +220,10 @@ namespace mms
     uint32_t m_next_message_id;
     std::string m_filename;
     message_transporter m_transporter;
+    std::atomic<bool> m_run;
     
-    uint32_t get_message_index_by_id(uint32_t id);
+    bool get_message_index_by_id(uint32_t id, uint32_t &index) const;
+    uint32_t get_message_index_by_id(uint32_t id) const;
     bool any_message_of_type(message_type type, message_direction direction) const;
     bool any_message_with_hash(const crypto::hash &hash) const;
     bool message_ids_complete(const std::vector<uint32_t> ids) const;
@@ -226,6 +232,7 @@ namespace mms
     void decrypt(const std::string &ciphertext, const crypto::public_key &encryption_public_key, const crypto::chacha_iv &iv,
                  const crypto::secret_key &view_secret_key, std::string &plaintext);
     void delete_transport_message(uint32_t id);
+    std::string account_address_to_string(const cryptonote::account_public_address &account_address) const;
   };
   
 }

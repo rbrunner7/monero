@@ -382,6 +382,5 @@ namespace cryptonote
     bool m_called_by_mms = false;
     bool called_by_mms();
     bool m_command_successful;
-    uint32_t m_idle_calls = 0;  // @@@ Debugging, calling the idle thread faster with refreshing every n-th call only
   };
 }

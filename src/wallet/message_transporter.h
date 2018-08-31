@@ -51,25 +51,25 @@ struct transport_message
   END_KV_SERIALIZE_MAP()
 };
 
-#define MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR -1
-
 class message_transporter {
 public:
   message_transporter();
+  void set_options(const std::string &bitmessage_address, const std::string &bitmessage_login);
   bool send_message(const transport_message &message);
   bool receive_messages(const cryptonote::account_public_address &destination_monero_address,
                         const std::string &destination_transport_address,
                         std::vector<transport_message> &messages);
   bool delete_message(const std::string &transport_id);
+  void stop() { m_run.store(false, std::memory_order_relaxed); }
   
 private:
   epee::net_utils::http::http_simple_client m_http_client;
   std::string m_bitmessage_url;
   std::string m_bitmessage_user;
   std::string m_bitmessage_password;
+  std::atomic<bool> m_run;
   
   bool post_request(const std::string &request, std::string &answer);
-  void handle_rpc_exception(const std::exception_ptr& e, epee::json_rpc::error& er, int default_error_code);
   std::string get_str_between_tags(const std::string &s, const std::string &start_delim, const std::string &stop_delim);
 
   void start_xml_rpc_cmd(std::string &xml, const std::string &method_name);

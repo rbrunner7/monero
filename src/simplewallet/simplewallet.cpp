@@ -1487,6 +1487,12 @@ bool simple_wallet::export_raw_multisig(const std::vector<std::string> &args)
 
 // MMS ---------------------------------------------------------------------------------------------------
 
+// Access to the message store, or more exactly to the list of the messages that can be changed
+// by the idle thread, is guarded by the same mutex-based mechanism as access to the wallet
+// as a whole and thus e.g. uses the "LOCK_IDLE_SCOPE" macro. This is a little over-cautious, but
+// simple and safe. Care has to be taken however where MMS methods call other simplewallet methods
+// that use "LOCK_IDLE_SCOPE" as this cannot be nested!
+
 // Methods for commands like "export_multisig_info" usually read data from file(s) or write data
 // to files. The MMS calls now those methods as well, to produce data for messages and to process data
 // from messages. As it would be quite inconvenient for the MMS to write data for such methods to files
@@ -1527,7 +1533,8 @@ bool simple_wallet::choose_mms_processing(const std::vector<mms::processing_data
       break;
     case mms::message_processing::send_tx:
     {
-      mms::message m = ms.get_message_by_id(data.message_ids[0]);
+      mms::message m;
+      ms.get_message_by_id(data.message_ids[0], m);
       if (m.type == mms::message_type::fully_signed_tx)
       {
         text += tr("Send the tx for submission to ");
@@ -1636,11 +1643,13 @@ bool simple_wallet::get_message_from_arg(const std::string &arg, mms::message &m
   try
   {
     id = (uint32_t)(std::stoi(arg));
-    m = ms.get_message_by_id(id);
-    valid_id = true;
+    valid_id = ms.get_message_by_id(id, m);
   }
   catch (...)
   {     
+  }
+  if (!valid_id)
+  {
     fail_msg_writer() << tr("Invalid message id");
   }
   return valid_id;
@@ -1761,6 +1770,7 @@ void simple_wallet::mms_list(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Usage: mms list");
     return;
   }
+  LOCK_IDLE_SCOPE();
   const std::vector<mms::message> &messages = ms.get_all_messages();
   list_mms_messages(messages);
 }
@@ -1773,24 +1783,30 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Usage: mms next [sync]");
     return;
   }
+  bool avail = false;
   std::vector<mms::processing_data> data_list;
   bool force_sync = false;
-  if ((args.size() > 1) && (args[1] == "sync"))
-  {
-    // Force the MMS to process any waiting sync info although on its own it would just ignore
-    // those messages because no need to process them can be seen
-    force_sync = true;
-  }
-  string wait_reason;
-  bool avail = ms.get_processable_messages(get_multisig_wallet_state(), force_sync, data_list, wait_reason);
   uint32_t choice = 0;
-  if (avail)
   {
-    avail = choose_mms_processing(data_list, choice);
-  }
-  else if (!wait_reason.empty())
-  {
-    success_msg_writer() << wait_reason;
+    LOCK_IDLE_SCOPE();
+    if ((args.size() > 1) && (args[1] == "sync"))
+    {
+      // Force the MMS to process any waiting sync info although on its own it would just ignore
+      // those messages because no need to process them can be seen
+      force_sync = true;
+    }
+    string wait_reason;
+    {
+      avail = ms.get_processable_messages(get_multisig_wallet_state(), force_sync, data_list, wait_reason);
+    }
+    if (avail)
+    {
+      avail = choose_mms_processing(data_list, choice);
+    }
+    else if (!wait_reason.empty())
+    {
+      success_msg_writer() << wait_reason;
+    }
   }
   if (avail)
   {
@@ -1898,8 +1914,11 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
     }
 
     if (m_command_successful) {
-      ms.set_messages_processed(data);
-      ask_send_all_ready_messages();
+      {
+        LOCK_IDLE_SCOPE();
+        ms.set_messages_processed(data);
+        ask_send_all_ready_messages();
+      }
     }
   }
 }
@@ -1941,6 +1960,7 @@ void simple_wallet::mms_delete(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Usage: mms delete <message_id> | all");
     return;
   }
+  LOCK_IDLE_SCOPE();
   if (args[1] == "all")
   {
     if (user_confirms(tr("Delete all messages?")))
@@ -1962,6 +1982,7 @@ void simple_wallet::mms_delete(const std::vector<std::string> &args)
 
 void simple_wallet::mms_send(const std::vector<std::string> &args)
 {
+  LOCK_IDLE_SCOPE();
   if (args.size() == 1)
   {
     ask_send_all_ready_messages();
@@ -1997,7 +2018,7 @@ void simple_wallet::mms_debug(const std::vector<std::string> &args)
   crypto::generate_key_derivation(m_spend_public_key, onetime_secret_key, derivation);
   
   crypto::chacha_key chacha_key;
-  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key);
+  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
   crypto::chacha_iv iv = crypto::rand<crypto::chacha_iv>();
   std::string ciphertext;
   ciphertext.resize(plaintext.size());
@@ -2006,7 +2027,7 @@ void simple_wallet::mms_debug(const std::vector<std::string> &args)
   crypto::key_derivation derivation2;
   crypto::generate_key_derivation(onetime_public_key, m_spend_secret_key, derivation2);
   crypto::chacha_key chacha_key2;
-  crypto::generate_chacha_key(&derivation2, sizeof(derivation2), chacha_key2);
+  crypto::generate_chacha_key(&derivation2, sizeof(derivation2), chacha_key2, 1);
   std::string plaintext2;
   plaintext2.resize(ciphertext.size());
   crypto::chacha20(ciphertext.data(), ciphertext.size(), chacha_key2, iv, &plaintext2[0]);
@@ -2087,7 +2108,7 @@ bool simple_wallet::mms(const std::vector<std::string> &args)
     {
       // "Receive" a message to me by reading it from a file in the directory given as own transport address
       // for debugging purposes
-      ms.receive_message(get_multisig_wallet_state());
+      ms.check_for_messages(get_multisig_wallet_state());
     }
     else if (args[0] == "debug")
     {
@@ -7765,7 +7786,7 @@ void simple_wallet::wallet_idle_thread()
       break;
 
     // auto refresh
-    if (m_auto_refresh_enabled && (m_idle_calls == 0)) // @@@
+    if (m_auto_refresh_enabled)
     {
       m_auto_refresh_refreshing = true;
       try
@@ -7778,20 +7799,20 @@ void simple_wallet::wallet_idle_thread()
       m_auto_refresh_refreshing = false;
     }
     
-    // @@@ MMS, debugging
-    if (get_message_store().is_active())
+    // Check for new MMS messages;
+    // For simplicity auto message check is controlled by "m_auto_refresh_enabled" as well and has no
+    // separate thread either; thread syncing is tricky enough with only this one idle thread here
+    if (m_auto_refresh_enabled && get_message_store().is_active())
     {
-      bool new_message = get_message_store().receive_message(get_multisig_wallet_state());
-      if (new_message)
-      {
-	message_writer(console_color_magenta, true) << tr("MMS received new message");
-	m_cmd_binder.print_prompt();
+      try {
+	bool new_message = get_message_store().check_for_messages(get_multisig_wallet_state());
+	if (new_message)
+	{
+	  message_writer(console_color_magenta, true) << tr("MMS received new message");
+	  m_cmd_binder.print_prompt();
+	}
       }
-    }
-    m_idle_calls++;
-    if (m_idle_calls == 6)
-    {
-      m_idle_calls = 0;
+      catch(...) {}
     }
 
     if (!m_idle_run.load(std::memory_order_relaxed))

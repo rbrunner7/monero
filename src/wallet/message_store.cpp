@@ -1,6 +1,7 @@
 #include "message_store.h"
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
+#include <boost/format.hpp>
 #include <fstream>
 #include <sstream>
 #include "file_io_utils.h"
@@ -18,6 +19,25 @@ message_store::message_store() {
   m_coalition_size = 0;
   m_threshold = 0;
   m_nettype = cryptonote::network_type::UNDEFINED;
+  m_run = true;
+}
+
+namespace
+{
+  // MMS options handling mirrors what "wallet2" is doing for its options, on-demand init and all
+  // It's not very clean to initialize Bitmessage-specific options here, but going one level further
+  // down still into "message_transporter" for that is a little bit too much
+  struct options {
+    const command_line::arg_descriptor<std::string> bitmessage_address = {"bitmessage-address", mms::message_store::tr("Use PyBitmessage instance at URL <arg>"), "http://localhost:8442/"};
+    const command_line::arg_descriptor<std::string> bitmessage_login = {"bitmessage-login", mms::message_store::tr("Specify <arg> as username:password for PyBitmessage API"), "username:password"};
+  };
+}
+
+void message_store::init_options(boost::program_options::options_description& desc_params)
+{
+  const options opts{};
+  command_line::add_arg(desc_params, opts.bitmessage_address);
+  command_line::add_arg(desc_params, opts.bitmessage_login);
 }
 
 void message_store::init(const multisig_wallet_state &state,
@@ -32,6 +52,19 @@ void message_store::init(const multisig_wallet_state &state,
   m_nettype = state.nettype;
   add_member(tr("me"), state.address, own_transport_address);
   set_active(true);
+}
+
+void message_store::set_options(const boost::program_options::variables_map& vm)
+{
+  const options opts{};
+  auto bitmessage_address = command_line::get_arg(vm, opts.bitmessage_address);
+  auto bitmessage_login = command_line::get_arg(vm, opts.bitmessage_login);
+  set_options(bitmessage_address, bitmessage_login);
+}
+
+void message_store::set_options(const std::string &bitmessage_address, const std::string &bitmessage_login)
+{
+  m_transporter.set_options(bitmessage_address, bitmessage_login);
 }
 
 uint32_t message_store::add_member(const std::string &label, const cryptonote::account_public_address &monero_address,
@@ -55,14 +88,14 @@ const coalition_member &message_store::get_member(uint32_t index) const
 
 bool message_store::member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const
 {
-  for (size_t i = 1; i < m_members.size(); ++i) {
+  for (size_t i = 0; i < m_members.size(); ++i) {
     const coalition_member &m = m_members[i];
     if (m.monero_address == monero_address) {
       index = m.index;
       return true;
     }
   }
-  MWARNING("No coalition member with Monero address " << get_account_address_as_str(m_nettype, false, monero_address));
+  MWARNING("No coalition member with Monero address " << account_address_to_string(monero_address));
   return false;
 }
 
@@ -72,19 +105,9 @@ void message_store::process_wallet_created_data(const multisig_wallet_state &sta
   case message_type::key_set:
     // Result of a "prepare_multisig" command in the wallet
     // Send the key set to all other members
-    for (size_t i = 1; i < m_members.size(); ++i) {
-      add_message(state, i, type, message_direction::out, content);
-    }
-    break;
-
   case message_type::finalizing_key_set:
     // Result of a "make_multisig" command in the wallet in case of N-1/N multisig
     // Send the finalizing key set to all other members
-    for (size_t i = 1; i < m_members.size(); ++i) {
-      add_message(state, i, type, message_direction::out, content);
-    }
-    break;
-
   case message_type::multisig_sync_data:
     // Result of a "export_multisig_info" command in the wallet
     // Send the sync data to all other members
@@ -111,7 +134,7 @@ void message_store::process_wallet_created_data(const multisig_wallet_state &sta
     break;
 
   default:
-    MERROR("Unknown message type " << (uint32_t)type);
+    THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, "Illegal message type " + (uint32_t)type);
     break;
   }
 }
@@ -138,25 +161,56 @@ uint32_t message_store::add_message(const multisig_wallet_state &state,
   m.wallet_height = state.num_transfer_details;
   m.hash = crypto::null_hash;
   m_messages.push_back(m);
-  return m_messages.size() - 1;
+  uint32_t id = m_messages.size() - 1;
+  MINFO(boost::format("Added %s message %s for member %s of type %s")
+	  % message_direction_to_string(direction) % id % member_index % message_type_to_string(type));
+  return id;
 }
 
-uint32_t message_store::get_message_index_by_id(uint32_t id)
+// Get the index of the message with id "id", return false if not found
+bool message_store::get_message_index_by_id(uint32_t id, uint32_t &index) const
 {
   for (size_t i = 0; i < m_messages.size(); ++i)
   {
     if (m_messages[i].id == id)
     {
-      return i;
+      index = i;
+      return true;
     }
   }
-  MERROR("No message found with an id of " << id);
-  return 0;
+  MWARNING("No message found with an id of " << id);
+  return false;
 }
 
-message message_store::get_message_by_id(uint32_t id)
+// Get the message with id "id" that must exist
+uint32_t message_store::get_message_index_by_id(uint32_t id) const
 {
-  return m_messages[get_message_index_by_id(id)];
+  uint32_t index;
+  bool found = get_message_index_by_id(id, index);
+  THROW_WALLET_EXCEPTION_IF(!found, tools::error::wallet_internal_error, "Invalid message id " + id);
+  return index;
+}
+
+// Get the message with id "id", return false if not found
+// This version of the method allows to check whether id is valid without triggering an error
+bool message_store::get_message_by_id(uint32_t id, message &m) const
+{
+  uint32_t index;
+  bool found = get_message_index_by_id(id, index);
+  if (found)
+  {
+    m = m_messages[index];
+  }
+  return found;
+}
+
+// Get the message with id "id" that must exist
+message message_store::get_message_by_id(uint32_t id) const
+{
+  message m;
+  bool found = get_message_by_id(id, m);
+  THROW_WALLET_EXCEPTION_IF(!found, tools::error::wallet_internal_error, "Invalid message id " + id);
+  return m;
 }
 
 bool message_store::any_message_of_type(message_type type, message_direction direction) const
@@ -529,7 +583,7 @@ void message_store::encrypt(uint32_t member_index, const std::string &plaintext,
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::wallet_internal_error, "Failed to generate key derivation for message encryption");
 
   crypto::chacha_key chacha_key;
-  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key);
+  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
   iv = crypto::rand<crypto::chacha_iv>();
   ciphertext.resize(plaintext.size());
   crypto::chacha20(plaintext.data(), plaintext.size(), chacha_key, iv, &ciphertext[0]);
@@ -542,7 +596,7 @@ void message_store::decrypt(const std::string &ciphertext, const crypto::public_
   bool success = crypto::generate_key_derivation(encryption_public_key, view_secret_key, derivation);
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::wallet_internal_error, "Failed to generate key derivation for message decryption");
   crypto::chacha_key chacha_key;
-  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key);
+  crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
   plaintext.resize(ciphertext.size());
   crypto::chacha20(ciphertext.data(), ciphertext.size(), chacha_key, iv, &plaintext[0]);
 }
@@ -558,7 +612,7 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
   std::string transport_address = m_members[m.member_index].transport_address;
   if (transport_address.find("BM-") == 0)
   {
-    // Take the transport address of the member as Bitmessage address and use the messaging daemon
+    // Take the transport address of the member as Bitmessage address and use the message transporter
     transport_message rm;
     rm.source_monero_address = dm.sender_address;
     rm.source_transport_address = m_members[0].transport_address;
@@ -591,14 +645,21 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
   m_messages[index].state=message_state::sent;
 }
 
-bool message_store::receive_message(const multisig_wallet_state &state)
+bool message_store::check_for_messages(const multisig_wallet_state &state)
 {
+  m_run.store(true, std::memory_order_relaxed);
   std::string transport_address = m_members[0].transport_address;
   if (transport_address.find("BM-") == 0)
   {
       // Take the transport address of "me" as Bitmessage address and use the messaging daemon
     std::vector<transport_message> transport_messages;
     bool r = m_transporter.receive_messages(m_members[0].monero_address, transport_address, transport_messages);
+    if (!m_run.load(std::memory_order_relaxed))
+    {
+      // Stop was called, don't waste time processing the messages
+      // (but once started processing them, don't react to stop request anymore, avoid receiving them "partially)"
+      return false;
+    }
     
     bool new_messages = false;
     for (size_t i = 0; i < transport_messages.size(); ++i)
@@ -675,7 +736,12 @@ void message_store::delete_transport_message(uint32_t id)
   }
 }
 
-const char *message_store::message_type_to_string(message_type type) {
+std::string message_store::account_address_to_string(const cryptonote::account_public_address &account_address) const
+{
+  return get_account_address_as_str(m_nettype, false, account_address);
+}
+
+const char* message_store::message_type_to_string(message_type type) {
   switch (type)
   {
   case message_type::key_set:
@@ -693,7 +759,7 @@ const char *message_store::message_type_to_string(message_type type) {
   }
 }
 
-const char *message_store::message_direction_to_string(message_direction direction) {
+const char* message_store::message_direction_to_string(message_direction direction) {
   switch (direction)
   {
   case message_direction::in:
@@ -705,7 +771,7 @@ const char *message_store::message_direction_to_string(message_direction directi
   }
 }
 
-const char *message_store::message_state_to_string(message_state state) {
+const char* message_store::message_state_to_string(message_state state) {
   switch (state)
   {
   case message_state::ready_to_send:

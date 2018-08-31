@@ -1,7 +1,7 @@
 #include "message_transporter.h"
 #include "string_coding.h"
 #include <boost/format.hpp>
-
+#include "wallet_errors.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.mms"
@@ -48,14 +48,26 @@ namespace bitmessage_rpc
 
 message_transporter::message_transporter()
 {
-  m_bitmessage_url = "http://localhost:8442/";
-  m_bitmessage_user = "username";
-  m_bitmessage_password = "password";
-  
-  boost::optional<epee::net_utils::http::login> bitmessage_login{};
-  bitmessage_login.emplace(m_bitmessage_user, m_bitmessage_password);
+  m_run = true;
+}
 
-  m_http_client.set_server(m_bitmessage_url, bitmessage_login, false);
+void message_transporter::set_options(const std::string &bitmessage_address, const std::string &bitmessage_login) {
+  m_bitmessage_url = bitmessage_address;
+  auto pos = bitmessage_login.find(":");
+  if (pos == std::string::npos)
+  {
+    m_bitmessage_user = bitmessage_login;
+    m_bitmessage_password.clear();
+  }
+  else
+  {
+    m_bitmessage_user = bitmessage_login.substr(0, pos);
+    m_bitmessage_password = bitmessage_login.substr(pos + 1);
+  }
+  
+  boost::optional<epee::net_utils::http::login> login{};
+  login.emplace(m_bitmessage_user, m_bitmessage_password);
+  m_http_client.set_server(m_bitmessage_url, login, false);
 }
 
 bool message_transporter::receive_messages(const cryptonote::account_public_address &destination_monero_address,
@@ -69,118 +81,81 @@ bool message_transporter::receive_messages(const cryptonote::account_public_addr
   // There is yet another Base64-encoding of course as part of the Bitmessage API for the message body parameter
   // The Bitmessage API call "getAllInboxMessages" gives back a JSON array with all the messages (despite using
   // XML-RPC for the calls, and not JSON-RPC ...)
-  try
+  m_run.store(true, std::memory_order_relaxed);
+  std::string request;
+  start_xml_rpc_cmd(request, "getAllInboxMessages");
+  end_xml_rpc_cmd(request);
+  std::string answer;
+  post_request(request, answer);
+
+  std::string json = get_str_between_tags(answer, "<string>", "</string>");
+  bitmessage_rpc::inbox_messages_response bitmessage_res;
+  epee::serialization::load_t_from_json(bitmessage_res, json);
+  size_t size = bitmessage_res.inboxMessages.size();
+  messages.clear();
+
+  for (size_t i = 0; i < size; ++i)
   {
-    std::string request;
-    start_xml_rpc_cmd(request, "getAllInboxMessages");
-    end_xml_rpc_cmd(request);
-    std::string answer;
-    post_request(request, answer);
-    
-    std::string json = get_str_between_tags(answer, "<string>", "</string>");
-    bitmessage_rpc::inbox_messages_response bitmessage_res;
-    epee::serialization::load_t_from_json(bitmessage_res, json);
-    size_t size = bitmessage_res.inboxMessages.size();
-    messages.clear();
-    
-    for (size_t i = 0; i < size; ++i)
+    if (!m_run.load(std::memory_order_relaxed))
     {
-      bitmessage_rpc::message_info message_info = bitmessage_res.inboxMessages[i];
-      transport_message message;
-      bool is_mms_message = false;
-      try
+      // Stop was called, don't waste time processing any more messages
+      return false;
+    }
+    bitmessage_rpc::message_info message_info = bitmessage_res.inboxMessages[i];
+    transport_message message;
+    bool is_mms_message = false;
+    try
+    {
+      // First Base64-decoding: The message body is Base64 in the Bitmessage API
+      std::string message_body = epee::string_encoding::base64_decode(message_info.message);
+      // Second Base64-decoding: The MMS uses Base64 to hide non-textual data in its JSON from Bitmessage
+      json = epee::string_encoding::base64_decode(message_body);
+      epee::serialization::load_t_from_json(message, json);
+      is_mms_message = true;
+    }
+    catch(const std::exception& e)
+    {
+    }
+    if (is_mms_message)
+    {
+      if (message.destination_monero_address == destination_monero_address)
       {
-	// First Base64-decoding: The message body is Base64 in the Bitmessage API
-	std::string message_body = epee::string_encoding::base64_decode(message_info.message);
-	// Second Base64-decoding: The MMS uses Base64 to hide non-textual data in its JSON from Bitmessage
-	json = epee::string_encoding::base64_decode(message_body);
-        epee::serialization::load_t_from_json(message, json);
-	is_mms_message = true;
-      }
-      catch(const std::exception& e)
-      {
-      }
-      if (is_mms_message)
-      {
-	if (message.destination_monero_address == destination_monero_address)
-	{
-	  message.transport_id = message_info.msgid;
-	  messages.push_back(message);
-	}
+	message.transport_id = message_info.msgid;
+	messages.push_back(message);
       }
     }
+  }
 
-  }
-  catch (const std::exception& e)
-  {
-    epee::json_rpc::error er;
-    handle_rpc_exception(std::current_exception(), er, MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR);
-    return false;
-  }
   return true;
 }
 
 bool message_transporter::send_message(const transport_message &message)
 {
   // <toAddress> <fromAddress> <subject> <message> [encodingType [TTL]]
-  try {
-    std::string request;
-    start_xml_rpc_cmd(request, "sendMessage");
-    add_xml_rpc_string_param(request, message.destination_transport_address);
-    add_xml_rpc_string_param(request, message.source_transport_address);
-    add_xml_rpc_base64_param(request, "MMS");
-    std::string json = epee::serialization::store_t_to_json(message);
-    std::string message_body = epee::string_encoding::base64_encode(json);  // See comment in "receive_message" about reason for (double-)Base64 encoding
-    add_xml_rpc_base64_param(request, message_body);
-    add_xml_rpc_integer_param(request, 2);
-    end_xml_rpc_cmd(request);
-    std::string answer;
-    post_request(request, answer);
-  }
-  catch (const std::exception& e)
-  {
-    epee::json_rpc::error er;
-    handle_rpc_exception(std::current_exception(), er, MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR);
-    return false;
-  }
+  std::string request;
+  start_xml_rpc_cmd(request, "sendMessage");
+  add_xml_rpc_string_param(request, message.destination_transport_address);
+  add_xml_rpc_string_param(request, message.source_transport_address);
+  add_xml_rpc_base64_param(request, "MMS");
+  std::string json = epee::serialization::store_t_to_json(message);
+  std::string message_body = epee::string_encoding::base64_encode(json);  // See comment in "receive_message" about reason for (double-)Base64 encoding
+  add_xml_rpc_base64_param(request, message_body);
+  add_xml_rpc_integer_param(request, 2);
+  end_xml_rpc_cmd(request);
+  std::string answer;
+  post_request(request, answer);
   return true;
 }
 
 bool message_transporter::delete_message(const std::string &transport_id)
 {
-  try {
-    std::string request;
-    start_xml_rpc_cmd(request, "trashMessage");
-    add_xml_rpc_string_param(request, transport_id);
-    end_xml_rpc_cmd(request);
-    std::string answer;
-    post_request(request, answer);
-  }
-  catch (const std::exception& e)
-  {
-    epee::json_rpc::error er;
-    handle_rpc_exception(std::current_exception(), er, MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR);
-    return false;
-  }
+  std::string request;
+  start_xml_rpc_cmd(request, "trashMessage");
+  add_xml_rpc_string_param(request, transport_id);
+  end_xml_rpc_cmd(request);
+  std::string answer;
+  post_request(request, answer);
   return true;
-}
-
-void message_transporter::handle_rpc_exception(const std::exception_ptr& e, epee::json_rpc::error& er, int default_error_code)
-{
-  try
-  {
-    std::rethrow_exception(e);
-  }
-  catch (const std::exception& e)
-  {
-    er.code = default_error_code;
-    er.message = e.what();
-  }
-  catch (...)
-  {
-    er.code = MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR;
-    er.message = "MESSAGE_TRANSPORTER_ERROR_CODE_UNKNOWN_ERROR";
-  }
 }
 
 bool message_transporter::post_request(const std::string &request, std::string &answer)
@@ -207,19 +182,36 @@ bool message_transporter::post_request(const std::string &request, std::string &
   }
   else
   {
-    LOG_ERROR("POST request to Bitmessage failed: " << request);
+    LOG_ERROR("POST request to Bitmessage failed: " << request.substr(300));
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_bitmessage, m_bitmessage_url);
   }
   m_http_client.disconnect();  // see comment above
+  std::string string_value = get_str_between_tags(answer, "<string>", "</string>");
+  if ((string_value.find("API Error") == 0) || (string_value.find("RPC ") == 0))
+  {
+    THROW_WALLET_EXCEPTION(tools::error::bitmessage_api_error, string_value);
+  }
   
   return r;
 }
 
+// Pick some string between two delimiters
+// When parsing the XML returned by PyBitmessage, don't bother to fully parse it but as a little hack rely on the
+// fact that e.g. a single string returned will be, however deeply nested in "<params><param><value>...", delivered
+// between the very first "<string>" and "</string>" tags to be found in the XML
 std::string message_transporter::get_str_between_tags(const std::string &s, const std::string &start_delim, const std::string &stop_delim)
 {
-    size_t first_delim_pos = s.find(start_delim);
+  size_t first_delim_pos = s.find(start_delim);
+  if (first_delim_pos != std::string::npos)
+  {
     size_t end_pos_of_first_delim = first_delim_pos + start_delim.length();
     size_t last_delim_pos = s.find(stop_delim);
-    return s.substr(end_pos_of_first_delim, last_delim_pos - end_pos_of_first_delim);
+    if (last_delim_pos != std::string::npos)
+    {
+      return s.substr(end_pos_of_first_delim, last_delim_pos - end_pos_of_first_delim);
+    }
+  }
+  return std::string();
 }
 
 void message_transporter::start_xml_rpc_cmd(std::string &xml, const std::string &method_name)
