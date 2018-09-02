@@ -99,6 +99,19 @@ bool message_store::member_index_by_monero_address(const cryptonote::account_pub
   return false;
 }
 
+bool message_store::member_index_by_label(const std::string label, uint32_t &index) const
+{
+  for (size_t i = 0; i < m_members.size(); ++i) {
+    const coalition_member &m = m_members[i];
+    if (m.label == label) {
+      index = m.index;
+      return true;
+    }
+  }
+  MWARNING("No coalition member with label " << label);
+  return false;
+}
+
 void message_store::process_wallet_created_data(const multisig_wallet_state &state, message_type type, const std::string &content) {
   switch(type)
   {
@@ -645,7 +658,7 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
   m_messages[index].state=message_state::sent;
 }
 
-bool message_store::check_for_messages(const multisig_wallet_state &state)
+bool message_store::check_for_messages(const multisig_wallet_state &state, std::vector<message> &messages)
 {
   m_run.store(true, std::memory_order_relaxed);
   std::string transport_address = m_members[0].transport_address;
@@ -690,6 +703,7 @@ bool message_store::check_for_messages(const multisig_wallet_state &state)
 	  uint32_t index = add_message(state, sender_index, (message_type)rm.type, message_direction::in, plaintext);
 	  m_messages[index].hash = rm.hash;
 	  m_messages[index].transport_id = rm.transport_id;
+	  messages.push_back(m_messages[index]);
 	  new_messages = true;
 	}
       }
@@ -754,6 +768,8 @@ const char* message_store::message_type_to_string(message_type type) {
     return tr("partially signed tx");
   case message_type::fully_signed_tx:
     return tr("fully signed tx");
+  case message_type::note:
+    return tr("note");
   default:
     return tr("unknown message type");
   }

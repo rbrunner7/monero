@@ -1626,9 +1626,10 @@ void simple_wallet::ask_send_all_ready_messages()
     list_mms_messages(ready_messages);
     if (user_confirms(tr("Send these messages now?")))
     {
+      mms::multisig_wallet_state state = get_multisig_wallet_state();
       for (size_t i = 0; i < ready_messages.size(); ++i)
       {
-	ms.send_message(get_multisig_wallet_state(), ready_messages[i].id);
+	ms.send_message(state, ready_messages[i].id);
 	ms.set_message_processed_or_sent(ready_messages[i].id);
       }
     }
@@ -1954,13 +1955,13 @@ void simple_wallet::mms_transfer(const std::vector<std::string> &args)
 
 void simple_wallet::mms_delete(const std::vector<std::string> &args)
 {
-  mms::message_store& ms = m_wallet->get_message_store();
   if (args.size() != 2)
   {
     fail_msg_writer() << tr("Usage: mms delete <message_id> | all");
     return;
   }
   LOCK_IDLE_SCOPE();
+  mms::message_store& ms = m_wallet->get_message_store();
   if (args[1] == "all")
   {
     if (user_confirms(tr("Delete all messages?")))
@@ -1982,7 +1983,6 @@ void simple_wallet::mms_delete(const std::vector<std::string> &args)
 
 void simple_wallet::mms_send(const std::vector<std::string> &args)
 {
-  LOCK_IDLE_SCOPE();
   if (args.size() == 1)
   {
     ask_send_all_ready_messages();
@@ -1993,14 +1993,90 @@ void simple_wallet::mms_send(const std::vector<std::string> &args)
     fail_msg_writer() << tr("Usage: mms send [<message_id>]");
     return;
   }
+  LOCK_IDLE_SCOPE();
   mms::message_store& ms = m_wallet->get_message_store();
   mms::message m;
   bool valid_id = get_message_from_arg(args[1], m);
   if (valid_id)
   {
-    // "Send" a message to a wallet by writing it as a file into the directory given as transport address
-    // for debugging purposes      
     ms.send_message(get_multisig_wallet_state(), m.id);
+  }
+}
+
+void simple_wallet::mms_receive(const std::vector<std::string> &args)
+{
+  std::vector<mms::message> new_messages;
+  LOCK_IDLE_SCOPE();
+  mms::message_store& ms = m_wallet->get_message_store();
+  bool avail = ms.check_for_messages(get_multisig_wallet_state(), new_messages);
+  if (avail)
+  {
+    list_mms_messages(new_messages);
+  }
+}
+
+void simple_wallet::mms_note(const std::vector<std::string> &args)
+{
+  if (args.size() < 3)
+  {
+    fail_msg_writer() << tr("Usage: mms note <label> <text>");
+    return;
+  }
+  mms::message_store& ms = m_wallet->get_message_store();
+  uint32_t member_index;
+  bool found = ms.member_index_by_label(args[1], member_index);
+  if (!found)
+  {
+    fail_msg_writer() << tr("No coalition member found with label ") << args[1];
+    return;
+  }
+  std::string note = "";
+  for (size_t n = 2; n < args.size(); ++n)
+  {
+    if (n > 2)
+    {
+      note += " ";
+    }
+    note += args[n];
+  }
+  LOCK_IDLE_SCOPE();
+  ms.add_message(get_multisig_wallet_state(), member_index, mms::message_type::note,
+		 mms::message_direction::out, note);
+  ask_send_all_ready_messages();
+}
+
+void simple_wallet::mms_show(const std::vector<std::string> &args)
+{
+  if (args.size() != 2)
+  {
+    fail_msg_writer() << tr("Usage: mms show <message_id>");
+    return;
+  }
+  LOCK_IDLE_SCOPE();
+  mms::message_store& ms = m_wallet->get_message_store();
+  mms::message m;
+  bool valid_id = get_message_from_arg(args[1], m);
+  if (valid_id)
+  {
+    const mms::coalition_member &member = ms.get_member(m.member_index);
+    bool display_content;
+    switch (m.type)
+    {
+    case mms::message_type::key_set:
+    case mms::message_type::finalizing_key_set:
+    case mms::message_type::note:
+      display_content = true;
+      break;
+    default:
+      display_content = false;
+    }
+    uint64_t now = time(NULL);
+    success_msg_writer() << tr("In/out: ") << ms.message_direction_to_string(m.direction);
+    success_msg_writer() << tr("Type: ") << ms.message_type_to_string(m.type);
+    success_msg_writer() << tr("State: ") << boost::format(tr("%s since %s, %s ago")) %
+	    ms.message_state_to_string(m.state) % get_human_readable_timestamp(m.modified) % get_human_readable_timespan(std::chrono::seconds(now - m.modified));
+    success_msg_writer() << tr("Member: ") << ms.member_to_string(member, 100);
+    success_msg_writer() << tr("Content: ") << (display_content ? m.content : tr("(binary data)")); 
   }
 }
 
@@ -2075,19 +2151,6 @@ bool simple_wallet::mms(const std::vector<std::string> &args)
     {
       mms_next(args);
     }
-
-    /*
-    else if (args[0] == "add_message")
-    {
-      // Add an arbitrary "in" message for debugging purposes, e.g. put in a "MultisigV1...." key set string
-      // mms add_message <member_index_as_int> <message_type_as_int> <message_content_as_string>
-      uint32_t member_index = (uint32_t)(std::stoi(args[1]));
-      tools::message_type message_type = (tools::message_type)(uint32_t)(std::stoi(args[2]));
-      ms.add_message(member_index, message_type, tools::message_direction_in,
-		     m_wallet->get_num_transfer_details(), args[3]);
-    }
-    */
-
     else if (args[0] == "sync")
     {
       mms_sync(args);
@@ -2106,22 +2169,32 @@ bool simple_wallet::mms(const std::vector<std::string> &args)
     }
     else if (args[0] == "receive")
     {
-      // "Receive" a message to me by reading it from a file in the directory given as own transport address
-      // for debugging purposes
-      ms.check_for_messages(get_multisig_wallet_state());
+      mms_receive(args);
+    }
+    else if (args[0] == "note")
+    {
+      mms_note(args);
+    }
+    else if (args[0] == "show")
+    {
+      mms_show(args);
     }
     else if (args[0] == "debug")
     {
       mms_debug(args);
     }
+    else
+    {
+      fail_msg_writer() << tr("Invalid MMS subcommand");
+    }
   }
   catch (const tools::error::no_connection_to_daemon &e)
   {
-    fail_msg_writer() << "Error in MMS command: " << e.what() << " " << e.request();
+    fail_msg_writer() << tr("Error in MMS command: ") << e.what() << " " << e.request();
   }
   catch (const std::exception &e)
   {
-    fail_msg_writer() << "Error in MMS command: " << e.what();
+    fail_msg_writer() << tr("Error in MMS command: ") << e.what();
     return true;
   }
   return true;
@@ -3320,7 +3393,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::mms, this, _1),
                            tr("mms [<subcommand> [<subcommand_parameters>]]"),
                            tr("Interface with the MMS (Monero Messaging System)\n"
-			      "subcommand is one of: init, info, member, list, next, sync, transfer, delete, send\n"
+			      "subcommand is one of: init, info, member, list, next, sync, transfer, delete, send, receive\n"
 			      "Get help about a subcommand with: help mms <subcommand>"));
   m_cmd_binder.set_handler("mms init",
                            boost::bind(&simple_wallet::mms, this, _1),
@@ -3359,6 +3432,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::mms, this, _1),
                            tr("mms send [<message id>]"),
                            tr("Send a single message by giving its id, or send all waiting messages"));
+  m_cmd_binder.set_handler("mms receive",
+                           boost::bind(&simple_wallet::mms, this, _1),
+                           tr("mms receive"),
+                           tr("Check right away for new messages to receive"));
   m_cmd_binder.set_handler("print_ring",
                            boost::bind(&simple_wallet::print_ring, this, _1),
                            tr("print_ring <key_image> | <txid>"),
@@ -7800,15 +7877,17 @@ void simple_wallet::wallet_idle_thread()
     }
     
     // Check for new MMS messages;
-    // For simplicity auto message check is controlled by "m_auto_refresh_enabled" as well and has no
+    // For simplicity auto message check is ALSO controlled by "m_auto_refresh_enabled" and has no
     // separate thread either; thread syncing is tricky enough with only this one idle thread here
     if (m_auto_refresh_enabled && get_message_store().is_active())
     {
       try {
-	bool new_message = get_message_store().check_for_messages(get_multisig_wallet_state());
+	std::vector<mms::message> new_messages;
+	bool new_message = get_message_store().check_for_messages(get_multisig_wallet_state(), new_messages);
 	if (new_message)
 	{
 	  message_writer(console_color_magenta, true) << tr("MMS received new message");
+          list_mms_messages(new_messages);
 	  m_cmd_binder.print_prompt();
 	}
       }

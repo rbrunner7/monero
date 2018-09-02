@@ -367,7 +367,7 @@ namespace cryptonote
     void ask_send_all_ready_messages();
     bool user_confirms(const std::string &question);
     bool get_message_from_arg(const std::string &arg, mms::message &m);
-    
+
     void mms_init(const std::vector<std::string> &args);
     void mms_info(const std::vector<std::string> &args);
     void mms_member(const std::vector<std::string> &args);
@@ -377,6 +377,9 @@ namespace cryptonote
     void mms_transfer(const std::vector<std::string> &args);
     void mms_delete(const std::vector<std::string> &args);
     void mms_send(const std::vector<std::string> &args);
+    void mms_receive(const std::vector<std::string> &args);
+    void mms_note(const std::vector<std::string> &args);
+    void mms_show(const std::vector<std::string> &args);
     void mms_debug(const std::vector<std::string> &args);
     
     bool m_called_by_mms = false;

@@ -30,7 +30,8 @@ namespace mms
     finalizing_key_set,
     multisig_sync_data,
     partially_signed_tx,
-    fully_signed_tx
+    fully_signed_tx,
+    note
   };
   
   enum class message_direction
@@ -125,6 +126,11 @@ namespace mms
     bool multisig_is_ready;
     bool has_multisig_partial_key_images;
     size_t num_transfer_details;
+    
+    ~multisig_wallet_state()
+    {
+      view_secret_key = crypto::null_skey;
+    }
   };
 
   class message_store
@@ -146,6 +152,7 @@ namespace mms
             const std::string &transport_address);
     const coalition_member &get_member(uint32_t index) const;
     bool member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const;
+    bool member_index_by_label(const std::string label, uint32_t &index) const;
     const std::vector<coalition_member> &get_all_members() const { return m_members; };
     
     // Process data just created by "me" i.e. the own local wallet, e.g. as the result of a "prepare_multisig" command
@@ -181,7 +188,7 @@ namespace mms
     void delete_all_messages();
     
     void send_message(const multisig_wallet_state &state, uint32_t id);
-    bool check_for_messages(const multisig_wallet_state &state);
+    bool check_for_messages(const multisig_wallet_state &state, std::vector<message> &messages);
     void stop() { m_run.store(false, std::memory_order_relaxed); m_transporter.stop(); }
     
     void write_to_file(const std::string &filename);
