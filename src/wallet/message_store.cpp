@@ -78,6 +78,10 @@ uint32_t message_store::add_member(const std::string &label, const cryptonote::a
   // Simple convention/automatism for now: The very first member is fixed as / must be "me"
   m.me = m.index == 0;
   m_members.push_back(m);
+  
+  // Save to minimize the chance to loose that info (at least while in beta)
+  save();
+  
   return m.index;
 }
 
@@ -174,6 +178,10 @@ uint32_t message_store::add_message(const multisig_wallet_state &state,
   m.wallet_height = state.num_transfer_details;
   m.hash = crypto::null_hash;
   m_messages.push_back(m);
+  
+  // Save for every new message right away (at least while in beta)
+  save();
+  
   uint32_t id = m_messages.size() - 1;
   MINFO(boost::format("Added %s message %s for member %s of type %s")
 	  % message_direction_to_string(direction) % id % member_index % message_type_to_string(type));
@@ -319,6 +327,17 @@ void message_store::read_from_file(const std::string &filename) {
   }
 
   m_filename = filename;
+}
+
+// Save to the same file this message store was loaded from
+// Called after changes deemed "important", to make it less probable to loose messages in case of
+// a crash; a better and long-term solution would of course be to use LMDB ...
+void message_store::save()
+{
+  if (!m_filename.empty())
+  {
+    write_to_file(m_filename);
+  }
 }
 
 bool message_store::get_processable_messages(const multisig_wallet_state &state,

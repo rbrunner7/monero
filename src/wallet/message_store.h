@@ -240,6 +240,7 @@ namespace mms
                  const crypto::secret_key &view_secret_key, std::string &plaintext);
     void delete_transport_message(uint32_t id);
     std::string account_address_to_string(const cryptonote::account_public_address &account_address) const;
+    void save();
   };
   
 }

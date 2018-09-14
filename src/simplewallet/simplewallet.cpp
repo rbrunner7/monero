@@ -2076,7 +2076,15 @@ void simple_wallet::mms_show(const std::vector<std::string> &args)
     success_msg_writer() << tr("State: ") << boost::format(tr("%s since %s, %s ago")) %
 	    ms.message_state_to_string(m.state) % get_human_readable_timestamp(m.modified) % get_human_readable_timespan(std::chrono::seconds(now - m.modified));
     success_msg_writer() << tr("Member: ") << ms.member_to_string(member, 100);
-    success_msg_writer() << tr("Content: ") << (display_content ? m.content : tr("(binary data)")); 
+    success_msg_writer() << tr("Content: ") << (display_content ? m.content : tr("(binary data)"));
+    
+    if (m.type == mms::message_type::note)
+    {
+      // Showing a note and read its text is "processing" it: Set the state accordingly
+      // which will also delete it from Bitmessage as a side effect
+      // (Without this little "twist" it would never change the state, and never get deleted)
+      ms.set_message_processed_or_sent(m.id);
+    }
   }
 }
 
@@ -3393,7 +3401,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::mms, this, _1),
                            tr("mms [<subcommand> [<subcommand_parameters>]]"),
                            tr("Interface with the MMS (Monero Messaging System)\n"
-			      "subcommand is one of: init, info, member, list, next, sync, transfer, delete, send, receive\n"
+			      "subcommand is one of: init, info, member, list, next, sync, transfer, delete, send, receive, note, show\n"
 			      "Get help about a subcommand with: help mms <subcommand>"));
   m_cmd_binder.set_handler("mms init",
                            boost::bind(&simple_wallet::mms, this, _1),
@@ -3436,6 +3444,14 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::mms, this, _1),
                            tr("mms receive"),
                            tr("Check right away for new messages to receive"));
+  m_cmd_binder.set_handler("mms note",
+                           boost::bind(&simple_wallet::mms, this, _1),
+                           tr("mms note <label> <text>"),
+                           tr("Send a one-line message to a coalition member, identified by its label"));
+  m_cmd_binder.set_handler("mms show",
+                           boost::bind(&simple_wallet::mms, this, _1),
+                           tr("mms show <message_id>"),
+                           tr("Show detailed info about a single message"));
   m_cmd_binder.set_handler("print_ring",
                            boost::bind(&simple_wallet::print_ring, this, _1),
                            tr("print_ring <key_image> | <txid>"),
