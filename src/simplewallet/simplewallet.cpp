@@ -1950,7 +1950,7 @@ void simple_wallet::mms_transfer(const std::vector<std::string> &args)
   std::vector<std::string> transfer_args = args;
   transfer_args.erase(transfer_args.begin());
   m_called_by_mms = true;
-  transfer_new(transfer_args);
+  transfer(transfer_args);
 }
 
 void simple_wallet::mms_delete(const std::vector<std::string> &args)
