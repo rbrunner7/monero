@@ -52,6 +52,8 @@ void message_store::init(const multisig_wallet_state &state,
   m_nettype = state.nettype;
   add_member(tr("me"), state.address, own_transport_address);
   set_active(true);
+  m_filename = state.mms_file;
+  save();
 }
 
 void message_store::set_options(const boost::program_options::variables_map& vm)
@@ -167,6 +169,7 @@ uint32_t message_store::add_message(const multisig_wallet_state &state,
   m.content = content;
   m.created = time(NULL);
   m.modified = m.created;
+  m.sent = 0;
   m.member_index = member_index;
   if (direction == message_direction::out)
   {
@@ -590,11 +593,11 @@ void message_store::set_message_processed_or_sent(uint32_t id)
   message &m = m_messages[index];
   if (m.state == message_state::waiting)
   {
-    m.state = message_state::processed;
     // So far a fairly cautious and conservative strategy: Only delete from Bitmessage
     // when fully processed (and e.g. not already after reception and writing into
     // the message store file)
     delete_transport_message(id);
+    m.state = message_state::processed;
   }
   else if (m.state == message_state::ready_to_send)
   {
@@ -675,6 +678,7 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
   }
 
   m_messages[index].state=message_state::sent;
+  m_messages[index].sent= time(NULL);
 }
 
 bool message_store::check_for_messages(const multisig_wallet_state &state, std::vector<message> &messages)
@@ -720,9 +724,11 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
 	  std::string plaintext;
 	  decrypt(rm.content, rm.encryption_public_key, rm.iv, state.view_secret_key, plaintext);
 	  uint32_t index = add_message(state, sender_index, (message_type)rm.type, message_direction::in, plaintext);
-	  m_messages[index].hash = rm.hash;
-	  m_messages[index].transport_id = rm.transport_id;
-	  messages.push_back(m_messages[index]);
+	  message &m = m_messages[index];
+	  m.hash = rm.hash;
+	  m.transport_id = rm.transport_id;
+	  m.sent = rm.timestamp;
+	  messages.push_back(m);
 	  new_messages = true;
 	}
       }

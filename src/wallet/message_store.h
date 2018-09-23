@@ -71,6 +71,7 @@ namespace mms
     std::string content;
     uint64_t created;
     uint64_t modified;
+    uint64_t sent;
     uint32_t member_index;
     crypto::hash hash;
     message_state state;
@@ -126,6 +127,7 @@ namespace mms
     bool multisig_is_ready;
     bool has_multisig_partial_key_images;
     size_t num_transfer_details;
+    std::string mms_file;
     
     ~multisig_wallet_state()
     {
@@ -138,6 +140,7 @@ namespace mms
   public:
     message_store();
     // Initialize and start to use the MMS, set the first member, this wallet itself
+    // Filename, if not null and not empty, is used to create the ".mms" file
     // reset it if already used, with deletion of all members and messages
     void init(const multisig_wallet_state &state,
               const std::string &own_transport_address, uint32_t coalition_size, uint32_t threshold);
@@ -246,7 +249,7 @@ namespace mms
 }
 
 BOOST_CLASS_VERSION(mms::message_store, 1)
-BOOST_CLASS_VERSION(mms::message, 2)
+BOOST_CLASS_VERSION(mms::message, 3)
 BOOST_CLASS_VERSION(mms::file_transport_message, 0)
 BOOST_CLASS_VERSION(mms::coalition_member, 0)
 
@@ -272,6 +275,17 @@ namespace boost
       if (ver > 1)
       {
         a & x.modified;
+      }
+      if (ver > 2)
+      {
+        a & x.sent;
+      }
+      else
+      {
+        if (!typename Archive::is_saving())
+        {
+          x.sent = 0;
+        }
       }
       a & x.member_index;
       a & x.hash;

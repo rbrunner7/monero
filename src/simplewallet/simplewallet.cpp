@@ -1806,7 +1806,7 @@ void simple_wallet::mms_next(const std::vector<std::string> &args)
     }
     else if (!wait_reason.empty())
     {
-      success_msg_writer() << wait_reason;
+      success_msg_writer() << tr("No next step: ") << wait_reason;
     }
   }
   if (avail)
@@ -2075,6 +2075,15 @@ void simple_wallet::mms_show(const std::vector<std::string> &args)
     success_msg_writer() << tr("Type: ") << ms.message_type_to_string(m.type);
     success_msg_writer() << tr("State: ") << boost::format(tr("%s since %s, %s ago")) %
 	    ms.message_state_to_string(m.state) % get_human_readable_timestamp(m.modified) % get_human_readable_timespan(std::chrono::seconds(now - m.modified));
+    if (m.sent == 0)
+    {
+      success_msg_writer() << tr("Sent: Never");
+    }
+    else
+    {
+      success_msg_writer() << boost::format(tr("Sent: %s, %s ago")) %
+	      get_human_readable_timestamp(m.sent) % get_human_readable_timespan(std::chrono::seconds(now - m.sent));
+    }
     success_msg_writer() << tr("Member: ") << ms.member_to_string(member, 100);
     success_msg_writer() << tr("Content: ") << (display_content ? m.content : tr("(binary data)"));
     

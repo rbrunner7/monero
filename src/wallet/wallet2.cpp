@@ -11451,22 +11451,6 @@ uint64_t wallet2::get_segregation_fork_height() const
 void wallet2::generate_genesis(cryptonote::block& b) const {
   cryptonote::generate_genesis_block(b, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE);
 }
-/*
-  struct wallet_state
-  {
-    cryptonote::account_public_address address;
-    crypto::secret_key view_secret_key;
-    bool multisig;
-    bool multisig_is_ready;
-    bool has_multisig_partial_images;
-    size_t num_transfer_details;
-    
-    bool original_keys_available;
-    cryptonote::account_public_address original_address;
-    crypto::secret_key original_view_secret_key;
-  };
-
-*/
 //----------------------------------------------------------------------------------------------------
 mms::multisig_wallet_state wallet2::get_multisig_wallet_state()
 {
@@ -11486,6 +11470,7 @@ mms::multisig_wallet_state wallet2::get_multisig_wallet_state()
     state.address = m_account.get_keys().m_account_address;
     state.view_secret_key = m_account.get_keys().m_view_secret_key;
   }
+  state.mms_file=m_mms_file;
   return state;
 }
 
