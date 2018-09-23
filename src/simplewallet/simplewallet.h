@@ -216,6 +216,7 @@ namespace cryptonote
     bool sign_multisig(const std::vector<std::string>& args);
     bool submit_multisig(const std::vector<std::string>& args);
     bool export_raw_multisig(const std::vector<std::string>& args);
+    bool mms(const std::vector<std::string>& args);
     bool print_ring(const std::vector<std::string>& args);
     bool set_ring(const std::vector<std::string>& args);
     bool save_known_rings(const std::vector<std::string>& args);
@@ -356,5 +357,33 @@ namespace cryptonote
     bool m_auto_refresh_refreshing;
     std::atomic<bool> m_in_manual_refresh;
     uint32_t m_current_subaddress_account;
+    
+    // MMS
+    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
+    mms::multisig_wallet_state get_multisig_wallet_state() const { return m_wallet->get_multisig_wallet_state(); };
+    bool mms_active() const { return get_message_store().is_active(); };
+    bool choose_mms_processing(const std::vector<mms::processing_data> &data_list, uint32_t &choice);
+    void list_mms_messages(const std::vector<mms::message> &messages);
+    void ask_send_all_ready_messages();
+    bool user_confirms(const std::string &question);
+    bool get_message_from_arg(const std::string &arg, mms::message &m);
+
+    void mms_init(const std::vector<std::string> &args);
+    void mms_info(const std::vector<std::string> &args);
+    void mms_member(const std::vector<std::string> &args);
+    void mms_list(const std::vector<std::string> &args);
+    void mms_next(const std::vector<std::string> &args);
+    void mms_sync(const std::vector<std::string> &args);
+    void mms_transfer(const std::vector<std::string> &args);
+    void mms_delete(const std::vector<std::string> &args);
+    void mms_send(const std::vector<std::string> &args);
+    void mms_receive(const std::vector<std::string> &args);
+    void mms_note(const std::vector<std::string> &args);
+    void mms_show(const std::vector<std::string> &args);
+    void mms_debug(const std::vector<std::string> &args);
+    
+    bool m_called_by_mms = false;
+    bool called_by_mms();
+    bool m_command_successful;
   };
 }
