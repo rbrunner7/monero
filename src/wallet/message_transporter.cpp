@@ -2,9 +2,12 @@
 #include "string_coding.h"
 #include <boost/format.hpp>
 #include "wallet_errors.h"
+#include "net/http_client.h"
+#include "net/net_parse_helpers.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.mms"
+#define PYBITMESSAGE_DEFAULT_API_PORT 8442
 
 namespace mms
 {
@@ -53,6 +56,13 @@ message_transporter::message_transporter()
 
 void message_transporter::set_options(const std::string &bitmessage_address, const std::string &bitmessage_login) {
   m_bitmessage_url = bitmessage_address;
+  epee::net_utils::http::url_content address_parts{};
+  epee::net_utils::parse_url(m_bitmessage_url, address_parts);
+  if (address_parts.port == 0)
+  {
+    address_parts.port = PYBITMESSAGE_DEFAULT_API_PORT;
+  }
+  
   auto pos = bitmessage_login.find(":");
   if (pos == std::string::npos)
   {
@@ -67,7 +77,7 @@ void message_transporter::set_options(const std::string &bitmessage_address, con
   
   boost::optional<epee::net_utils::http::login> login{};
   login.emplace(m_bitmessage_user, m_bitmessage_password);
-  m_http_client.set_server(m_bitmessage_url, login, false);
+  m_http_client.set_server(address_parts.host, std::to_string(address_parts.port), login);
 }
 
 bool message_transporter::receive_messages(const cryptonote::account_public_address &destination_monero_address,
@@ -136,7 +146,7 @@ bool message_transporter::send_message(const transport_message &message)
   start_xml_rpc_cmd(request, "sendMessage");
   add_xml_rpc_string_param(request, message.destination_transport_address);
   add_xml_rpc_string_param(request, message.source_transport_address);
-  add_xml_rpc_base64_param(request, "MMS");
+  add_xml_rpc_base64_param(request, message.subject);
   std::string json = epee::serialization::store_t_to_json(message);
   std::string message_body = epee::string_encoding::base64_encode(json);  // See comment in "receive_message" about reason for (double-)Base64 encoding
   add_xml_rpc_base64_param(request, message_body);

@@ -76,6 +76,8 @@ namespace mms
     crypto::hash hash;
     message_state state;
     uint32_t wallet_height;
+    uint32_t round;
+    uint32_t signature_count;
     std::string transport_id;
   };
   // "wallet_height" (for lack of a short name that would describe what it is about)
@@ -85,9 +87,10 @@ namespace mms
   
   struct coalition_member
   {
-    cryptonote::account_public_address monero_address;
-    std::string transport_address;
     std::string label;
+    std::string transport_address;
+    bool monero_address_known;
+    cryptonote::account_public_address monero_address;
     bool me;
     uint32_t index;
   };
@@ -142,21 +145,28 @@ namespace mms
     // Initialize and start to use the MMS, set the first member, this wallet itself
     // Filename, if not null and not empty, is used to create the ".mms" file
     // reset it if already used, with deletion of all members and messages
-    void init(const multisig_wallet_state &state,
+    void init(const multisig_wallet_state &state, const std::string &own_label,
               const std::string &own_transport_address, uint32_t coalition_size, uint32_t threshold);
     void set_active(bool active) { m_active = active; };
+    void set_auto_send(bool auto_send) { m_auto_send = auto_send; };
     void set_options(const boost::program_options::variables_map& vm);
     void set_options(const std::string &bitmessage_address, const std::string &bitmessage_login);
-    bool is_active() const { return m_active; };
+    bool get_active() const { return m_active; };
+    bool get_auto_send() const { return m_auto_send; };
     uint32_t get_threshold() const { return m_threshold; };
     uint32_t get_coalition_size() const { return m_coalition_size; };
     
-    uint32_t add_member(const std::string &label, const cryptonote::account_public_address &monero_address,
-            const std::string &transport_address);
+    void set_member(const multisig_wallet_state &state,
+                    uint32_t index,
+                    const boost::optional<std::string> &label,
+                    const boost::optional<std::string> &transport_address,
+                    const boost::optional<cryptonote::account_public_address> monero_address);
+                    
     const coalition_member &get_member(uint32_t index) const;
-    bool member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const;
-    bool member_index_by_label(const std::string label, uint32_t &index) const;
+    bool get_member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const;
+    bool get_member_index_by_label(const std::string label, uint32_t &index) const;
     const std::vector<coalition_member> &get_all_members() const { return m_members; };
+    bool member_info_complete() const;
     
     // Process data just created by "me" i.e. the own local wallet, e.g. as the result of a "prepare_multisig" command
     // Creates the resulting messages to the right members
@@ -194,22 +204,20 @@ namespace mms
     bool check_for_messages(const multisig_wallet_state &state, std::vector<message> &messages);
     void stop() { m_run.store(false, std::memory_order_relaxed); m_transporter.stop(); }
     
-    void write_to_file(const std::string &filename);
-    void read_from_file(const std::string &filename);
+    void write_to_file(const multisig_wallet_state &state, const std::string &filename);
+    void read_from_file(const multisig_wallet_state &state, const std::string &filename);
     
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int ver)
     {
       a & m_active;
       a & m_coalition_size;
-      if (ver > 0)
-      {
-        a & m_nettype;
-      }
+      a & m_nettype;
       a & m_threshold;
       a & m_members;
       a & m_messages;
       a & m_next_message_id;
+      a & m_auto_send;
     }
 
     const char* message_type_to_string(message_type type);
@@ -224,6 +232,7 @@ namespace mms
     bool m_active;
     uint32_t m_coalition_size;
     uint32_t m_threshold;
+    bool m_auto_send;
     cryptonote::network_type m_nettype;
     std::vector<coalition_member> m_members;
     std::vector<message> m_messages;
@@ -243,13 +252,24 @@ namespace mms
                  const crypto::secret_key &view_secret_key, std::string &plaintext);
     void delete_transport_message(uint32_t id);
     std::string account_address_to_string(const cryptonote::account_public_address &account_address) const;
-    void save();
+    void save(const multisig_wallet_state &state);
+
+    struct file_data
+    {
+      crypto::chacha_iv iv;
+      std::string encrypted_data;
+
+      BEGIN_SERIALIZE_OBJECT()
+        FIELD(iv)
+        FIELD(encrypted_data)
+      END_SERIALIZE()
+    };
   };
   
 }
 
-BOOST_CLASS_VERSION(mms::message_store, 1)
-BOOST_CLASS_VERSION(mms::message, 3)
+BOOST_CLASS_VERSION(mms::message_store, 0)
+BOOST_CLASS_VERSION(mms::message, 0)
 BOOST_CLASS_VERSION(mms::file_transport_message, 0)
 BOOST_CLASS_VERSION(mms::coalition_member, 0)
 
@@ -265,44 +285,24 @@ namespace boost
       a & x.direction;
       a & x.content;
       a & x.created;
-      if (ver < 2)
-      {
-        if (!typename Archive::is_saving())
-        {
-          x.modified = x.created;
-        }
-      }
-      if (ver > 1)
-      {
-        a & x.modified;
-      }
-      if (ver > 2)
-      {
-        a & x.sent;
-      }
-      else
-      {
-        if (!typename Archive::is_saving())
-        {
-          x.sent = 0;
-        }
-      }
+      a & x.modified;
+      a & x.sent;
       a & x.member_index;
       a & x.hash;
       a & x.state;
       a & x.wallet_height;
-      if (ver > 0)
-      {
-        a & x.transport_id;
-      }
+      a & x.round;
+      a & x.signature_count;
+      a & x.transport_id;
     }
     
     template <class Archive>
     inline void serialize(Archive &a, mms::coalition_member &x, const boost::serialization::version_type ver)
     {
-      a & x.monero_address;
-      a & x.transport_address;
       a & x.label;
+      a & x.transport_address;
+      a & x.monero_address_known;
+      a & x.monero_address;
       a & x.me;
       a & x.index;
     }

@@ -7,14 +7,30 @@
 #include "file_io_utils.h"
 #include "storages/http_abstract_invoke.h"
 #include "wallet_errors.h"
+#include "serialization/binary_utils.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.mms"
 
 namespace mms
 {
+static std::string get_human_readable_timestamp(uint64_t ts)
+{
+  char buffer[64];
+  time_t tt = ts;
+  struct tm tm;
+#ifdef WIN32
+  gmtime_s(&tm, &tt);
+#else
+  gmtime_r(&tt, &tm);
+#endif
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+  return std::string(buffer);
+}
+
 message_store::message_store() {
   m_active = false;
+  m_auto_send = false;
   m_next_message_id = 1;
   m_coalition_size = 0;
   m_threshold = 0;
@@ -40,7 +56,7 @@ void message_store::init_options(boost::program_options::options_description& de
   command_line::add_arg(desc_params, opts.bitmessage_login);
 }
 
-void message_store::init(const multisig_wallet_state &state,
+void message_store::init(const multisig_wallet_state &state, const std::string &own_label,
 			 const std::string &own_transport_address, uint32_t coalition_size, uint32_t threshold)
 {
   m_coalition_size = coalition_size;
@@ -48,12 +64,26 @@ void message_store::init(const multisig_wallet_state &state,
   m_members.clear();
   m_messages.clear();
   m_next_message_id = 1;
+  
+  coalition_member member;
+  member.label.clear();
+  member.transport_address.clear();
+  member.monero_address_known = false;
+  memset(&member.monero_address, 0, sizeof(cryptonote::account_public_address));
+  member.index = 0;
+
+  for (size_t i = 0; i < m_coalition_size; ++i) {
+    member.me = member.index == 0;    // Simple convention/automatism for now: The very first member is fixed as / must be "me"
+    m_members.push_back(member);
+    member.index++;
+  }
+  
+  set_member(state, 0, own_label, own_transport_address, state.address);
 
   m_nettype = state.nettype;
-  add_member(tr("me"), state.address, own_transport_address);
   set_active(true);
   m_filename = state.mms_file;
-  save();
+  save(state);
 }
 
 void message_store::set_options(const boost::program_options::variables_map& vm)
@@ -69,22 +99,29 @@ void message_store::set_options(const std::string &bitmessage_address, const std
   m_transporter.set_options(bitmessage_address, bitmessage_login);
 }
 
-uint32_t message_store::add_member(const std::string &label, const cryptonote::account_public_address &monero_address,
-				   const std::string &transport_address)
+void message_store::set_member(const multisig_wallet_state &state,
+			       uint32_t index,
+                               const boost::optional<std::string> &label,
+                               const boost::optional<std::string> &transport_address,
+                               const boost::optional<cryptonote::account_public_address> monero_address)
 {
-  coalition_member m;
-  m.monero_address = monero_address;
-  m.transport_address = transport_address;
-  m.label = label;
-  m.index = m_members.size();
-  // Simple convention/automatism for now: The very first member is fixed as / must be "me"
-  m.me = m.index == 0;
-  m_members.push_back(m);
-  
+  THROW_WALLET_EXCEPTION_IF(index >= m_coalition_size, tools::error::wallet_internal_error, "Invalid member index " + index);
+  coalition_member &m = m_members[index];
+  if (label)
+  {
+    m.label = label.get();
+  }
+  if (transport_address)
+  {
+    m.transport_address = transport_address.get();
+  }
+  if (monero_address)
+  {
+    m.monero_address_known = true;
+    m.monero_address = monero_address.get();
+  }
   // Save to minimize the chance to loose that info (at least while in beta)
-  save();
-  
-  return m.index;
+  save(state);
 }
 
 const coalition_member &message_store::get_member(uint32_t index) const
@@ -92,7 +129,18 @@ const coalition_member &message_store::get_member(uint32_t index) const
   return m_members[index];
 }
 
-bool message_store::member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const
+bool message_store::member_info_complete() const
+{
+  for (size_t i = 0; i < m_members.size(); ++i) {
+    const coalition_member &m = m_members[i];
+    if (m.label.empty() || m.transport_address.empty() || !m.monero_address_known) {
+      return false;
+    }
+  }
+  return true;  
+}
+
+bool message_store::get_member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const
 {
   for (size_t i = 0; i < m_members.size(); ++i) {
     const coalition_member &m = m_members[i];
@@ -105,7 +153,7 @@ bool message_store::member_index_by_monero_address(const cryptonote::account_pub
   return false;
 }
 
-bool message_store::member_index_by_label(const std::string label, uint32_t &index) const
+bool message_store::get_member_index_by_label(const std::string label, uint32_t &index) const
 {
   for (size_t i = 0; i < m_members.size(); ++i) {
     const coalition_member &m = m_members[i];
@@ -179,11 +227,13 @@ uint32_t message_store::add_message(const multisig_wallet_state &state,
     m.state = message_state::waiting;
   };
   m.wallet_height = state.num_transfer_details;
+  m.round = 0;  // Future expansion for fully generalized M/N multisig
+  m.signature_count = 0;  // Future expansion for signature counting when signing txs
   m.hash = crypto::null_hash;
   m_messages.push_back(m);
   
   // Save for every new message right away (at least while in beta)
-  save();
+  save(state);
   
   uint32_t id = m_messages.size() - 1;
   MINFO(boost::format("Added %s message %s for member %s of type %s")
@@ -294,16 +344,33 @@ void message_store::delete_all_messages()
   m_messages.clear();
 }
 
-void message_store::write_to_file(const std::string &filename) {
+void message_store::write_to_file(const multisig_wallet_state &state, const std::string &filename) {
   std::stringstream oss;
   boost::archive::portable_binary_oarchive ar(oss);
   ar << *this;
   std::string buf = oss.str();
-  bool success = epee::file_io_utils::save_string_to_file(filename, buf);
-  THROW_WALLET_EXCEPTION_IF(!success || !oss.good(), tools::error::file_save_error, filename);
+  
+  crypto::chacha_key key;
+  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
+
+  message_store::file_data file_data = boost::value_initialized<message_store::file_data>();
+  std::string encrypted_data;
+  encrypted_data.resize(buf.size());
+  file_data.iv = crypto::rand<crypto::chacha_iv>();
+  crypto::chacha20(buf.data(), buf.size(), key, file_data.iv, &encrypted_data[0]);
+  file_data.encrypted_data = encrypted_data;
+ 
+  std::ostringstream oss1;
+  binary_archive<true> oar(oss1);
+  bool success = serialization::serialize(oar, file_data);
+  THROW_WALLET_EXCEPTION_IF(!success || !oss1.good(), tools::error::file_save_error, filename);
+
+  success = epee::file_io_utils::save_string_to_file(filename, oss1.str());
+  THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_save_error, filename);
 }
 
-void message_store::read_from_file(const std::string &filename) {
+void message_store::read_from_file(const multisig_wallet_state &state, const std::string &filename)
+{
   boost::system::error_code ignored_ec;
   bool file_exists = boost::filesystem::exists(filename, ignored_ec);
   if (!file_exists) {
@@ -316,10 +383,25 @@ void message_store::read_from_file(const std::string &filename) {
   std::string buf;
   bool success = epee::file_io_utils::load_file_to_string(filename, buf);
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_read_error, filename);
+  
+  message_store::file_data file_data;
+  success = serialization::parse_binary(buf, file_data);
+  if (!success)
+  {
+    MERROR("MMS file " << filename << " has bad structure <iv,encrypted_data>");
+    THROW_WALLET_EXCEPTION_IF(true, tools::error::file_read_error, filename);
+  }
+  
+  crypto::chacha_key key;
+  crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
+  std::string decrypted_data;
+  decrypted_data.resize(file_data.encrypted_data.size());
+  crypto::chacha20(file_data.encrypted_data.data(), file_data.encrypted_data.size(), key, file_data.iv, &decrypted_data[0]);
+
   try
   {
     std::stringstream iss;
-    iss << buf;
+    iss << decrypted_data;
     boost::archive::portable_binary_iarchive ar(iss);
     ar >> *this;
   }
@@ -335,11 +417,11 @@ void message_store::read_from_file(const std::string &filename) {
 // Save to the same file this message store was loaded from
 // Called after changes deemed "important", to make it less probable to loose messages in case of
 // a crash; a better and long-term solution would of course be to use LMDB ...
-void message_store::save()
+void message_store::save(const multisig_wallet_state &state)
 {
   if (!m_filename.empty())
   {
-    write_to_file(m_filename);
+    write_to_file(state, m_filename);
   }
 }
 
@@ -657,6 +739,7 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
     rm.encryption_public_key = dm.encryption_public_key;
     rm.timestamp = time(NULL);
     rm.type = (uint32_t)dm.internal_message.type;
+    rm.subject = "MMS V0 " + get_human_readable_timestamp(rm.timestamp);
     rm.content = dm.internal_message.content;
     rm.hash = crypto::cn_fast_hash(rm.content.data(), rm.content.size());
     
@@ -708,7 +791,7 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
       else
       {
         uint32_t sender_index;
-	bool found = member_index_by_monero_address(rm.source_monero_address, sender_index);
+	bool found = get_member_index_by_monero_address(rm.source_monero_address, sender_index);
 	if (!found)
 	{
 	  // From an address that is not a member here: Ignore
@@ -728,6 +811,8 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
 	  m.hash = rm.hash;
 	  m.transport_id = rm.transport_id;
 	  m.sent = rm.timestamp;
+	  m.round = rm.round;
+	  m.signature_count = rm.signature_count;
 	  messages.push_back(m);
 	  new_messages = true;
 	}
@@ -755,7 +840,7 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
     ar >> dm;
 
     uint32_t sender_index;
-    member_index_by_monero_address(dm.sender_address, sender_index);
+    get_member_index_by_monero_address(dm.sender_address, sender_index);
     std::string plaintext;
     decrypt(dm.internal_message.content, dm.encryption_public_key, dm.iv, state.view_secret_key, plaintext);
     add_message(state, sender_index, dm.internal_message.type, message_direction::in, plaintext);

@@ -4516,7 +4516,7 @@ void wallet2::load(const std::string& wallet_, const epee::wipeable_string& pass
     MERROR("Failed to save rings, will try again next time");
   }
   
-  m_message_store.read_from_file(m_mms_file);
+  m_message_store.read_from_file(get_multisig_wallet_state(), m_mms_file);
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::trim_hashchain()
@@ -4686,11 +4686,11 @@ void wallet2::store_to(const std::string &path, const epee::wipeable_string &pas
     THROW_WALLET_EXCEPTION_IF(e, error::file_save_error, m_wallet_file, e);
   }
   
-  if (m_message_store.is_active())
+  if (m_message_store.get_active())
   {
     // While the "m_message_store" object of course always exist, a file for the message
     // store should only exist if the MMS is really active
-    m_message_store.write_to_file(m_mms_file);
+    m_message_store.write_to_file(get_multisig_wallet_state(), m_mms_file);
   }
   
 }

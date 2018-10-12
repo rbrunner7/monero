@@ -16,6 +16,7 @@
 #include "common/util.h"
 #include "serialization/keyvalue_serialization.h"
 
+#define PYBITMESSAGE_API_PORT 8442
 
 namespace mms
 {
@@ -30,9 +31,12 @@ struct transport_message
   crypto::public_key encryption_public_key;
   uint64_t timestamp;
   uint32_t type;
+  std::string subject;
   std::string content;
   crypto::hash hash;
   crypto::signature signature;
+  uint32_t round;
+  uint32_t signature_count;
   std::string transport_id;
 
   BEGIN_KV_SERIALIZE_MAP()
@@ -44,9 +48,12 @@ struct transport_message
     KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(encryption_public_key)
     KV_SERIALIZE(timestamp)
     KV_SERIALIZE(type)
+    KV_SERIALIZE(subject)
     KV_SERIALIZE(content)
     KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(hash)
     KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(signature)
+    KV_SERIALIZE(round)
+    KV_SERIALIZE(signature_count)
     KV_SERIALIZE(transport_id)
   END_KV_SERIALIZE_MAP()
 };
