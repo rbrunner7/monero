@@ -1025,4 +1025,19 @@ std::string get_nix_version_display_string()
 #endif
   }
 
+  std::string get_human_readable_timestamp(uint64_t ts)
+  {
+    char buffer[64];
+    if (ts < 1234567890)
+      return "<unknown>";
+    time_t tt = ts;
+    struct tm tm;
+  #ifdef WIN32
+    gmtime_s(&tm, &tt);
+  #else
+    gmtime_r(&tt, &tm);
+  #endif
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    return std::string(buffer);
+  }
 }
