@@ -1,3 +1,33 @@
+// Copyright (c) 2014-2018, The Monero Project
+//
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without modification, are
+// permitted provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of
+//    conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list
+//    of conditions and the following disclaimer in the documentation and/or other
+//    materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be
+//    used to endorse or promote products derived from this software without specific
+//    prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+// THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
+
 #include "message_store.h"
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
@@ -64,7 +94,7 @@ void message_store::init(const multisig_wallet_state &state, const std::string &
   m_members.clear();
   m_messages.clear();
   m_next_message_id = 1;
-  
+
   coalition_member member;
   member.label.clear();
   member.transport_address.clear();
@@ -77,7 +107,7 @@ void message_store::init(const multisig_wallet_state &state, const std::string &
     m_members.push_back(member);
     member.index++;
   }
-  
+
   set_member(state, 0, own_label, own_transport_address, state.address);
 
   m_nettype = state.nettype;
@@ -137,7 +167,7 @@ bool message_store::member_info_complete() const
       return false;
     }
   }
-  return true;  
+  return true;
 }
 
 bool message_store::get_member_index_by_monero_address(const cryptonote::account_public_address &monero_address, uint32_t &index) const
@@ -231,10 +261,10 @@ uint32_t message_store::add_message(const multisig_wallet_state &state,
   m.signature_count = 0;  // Future expansion for signature counting when signing txs
   m.hash = crypto::null_hash;
   m_messages.push_back(m);
-  
+
   // Save for every new message right away (at least while in beta)
   save(state);
-  
+
   uint32_t id = m_messages.size() - 1;
   MINFO(boost::format("Added %s message %s for member %s of type %s")
 	  % message_direction_to_string(direction) % id % member_index % message_type_to_string(type));
@@ -347,25 +377,40 @@ void message_store::delete_all_messages()
 void message_store::write_to_file(const multisig_wallet_state &state, const std::string &filename) {
   std::stringstream oss;
   boost::archive::portable_binary_oarchive ar(oss);
-  ar << *this;
+  try
+  {
+    ar << *this;
+  }
+  catch (...)
+  {
+    THROW_WALLET_EXCEPTION_IF(true, tools::error::file_save_error, filename);
+  }
   std::string buf = oss.str();
-  
+
   crypto::chacha_key key;
   crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
 
-  message_store::file_data file_data = boost::value_initialized<message_store::file_data>();
+  file_data write_file_data = boost::value_initialized<file_data>();
+  write_file_data.magic_string = "MMS";
+  write_file_data.file_version = 0;
+  write_file_data.iv = crypto::rand<crypto::chacha_iv>();
   std::string encrypted_data;
   encrypted_data.resize(buf.size());
-  file_data.iv = crypto::rand<crypto::chacha_iv>();
-  crypto::chacha20(buf.data(), buf.size(), key, file_data.iv, &encrypted_data[0]);
-  file_data.encrypted_data = encrypted_data;
- 
-  std::ostringstream oss1;
-  binary_archive<true> oar(oss1);
-  bool success = serialization::serialize(oar, file_data);
-  THROW_WALLET_EXCEPTION_IF(!success || !oss1.good(), tools::error::file_save_error, filename);
+  crypto::chacha20(buf.data(), buf.size(), key, write_file_data.iv, &encrypted_data[0]);
+  write_file_data.encrypted_data = encrypted_data;
 
-  success = epee::file_io_utils::save_string_to_file(filename, oss1.str());
+  std::stringstream file_oss;
+  boost::archive::portable_binary_oarchive file_ar(file_oss);
+  try
+  {
+    file_ar << write_file_data;
+  }
+  catch (...)
+  {
+    THROW_WALLET_EXCEPTION_IF(true, tools::error::file_save_error, filename);
+  }
+
+  bool success = epee::file_io_utils::save_string_to_file(filename, file_oss.str());
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_save_error, filename);
 }
 
@@ -383,20 +428,26 @@ void message_store::read_from_file(const multisig_wallet_state &state, const std
   std::string buf;
   bool success = epee::file_io_utils::load_file_to_string(filename, buf);
   THROW_WALLET_EXCEPTION_IF(!success, tools::error::file_read_error, filename);
-  
-  message_store::file_data file_data;
-  success = serialization::parse_binary(buf, file_data);
-  if (!success)
+
+  file_data read_file_data;
+  try
   {
-    MERROR("MMS file " << filename << " has bad structure <iv,encrypted_data>");
+    std::stringstream iss;
+    iss << buf;
+    boost::archive::portable_binary_iarchive ar(iss);
+    ar >> read_file_data;
+  }
+  catch (const std::exception &e)
+  {
+    MERROR("MMS file " << filename << " has bad structure <iv,encrypted_data>: " << e.what());
     THROW_WALLET_EXCEPTION_IF(true, tools::error::file_read_error, filename);
   }
-  
+
   crypto::chacha_key key;
   crypto::generate_chacha_key(&state.view_secret_key, sizeof(crypto::secret_key), key, 1);
   std::string decrypted_data;
-  decrypted_data.resize(file_data.encrypted_data.size());
-  crypto::chacha20(file_data.encrypted_data.data(), file_data.encrypted_data.size(), key, file_data.iv, &decrypted_data[0]);
+  decrypted_data.resize(read_file_data.encrypted_data.size());
+  crypto::chacha20(read_file_data.encrypted_data.data(), read_file_data.encrypted_data.size(), key, read_file_data.iv, &decrypted_data[0]);
 
   try
   {
@@ -542,7 +593,7 @@ bool message_store::get_processable_messages(const multisig_wallet_state &state,
   // and orchestrate a sensible exchange of sync data.
   if (state.has_multisig_partial_key_images || force_sync)
   {
-    // Sync is necessary and not yet completed: Processing of transactions 
+    // Sync is necessary and not yet completed: Processing of transactions
     // will only be possible again once properly synced
     // Check first whether we generated already OUR sync info; take note of
     // any processable sync info from other members on the way in case we need it
@@ -688,12 +739,12 @@ void message_store::set_message_processed_or_sent(uint32_t id)
   m.modified = time(NULL);
 }
 
-void message_store::encrypt(uint32_t member_index, const std::string &plaintext, 
+void message_store::encrypt(uint32_t member_index, const std::string &plaintext,
 			    std::string &ciphertext, crypto::public_key &encryption_public_key, crypto::chacha_iv &iv)
 {
   crypto::secret_key encryption_secret_key;
   crypto::generate_keys(encryption_public_key, encryption_secret_key);
-  
+
   crypto::key_derivation derivation;
   crypto::public_key dest_view_public_key = m_members[member_index].monero_address.m_view_public_key;
   bool success = crypto::generate_key_derivation(dest_view_public_key, encryption_secret_key, derivation);
@@ -742,9 +793,9 @@ void message_store::send_message(const multisig_wallet_state &state, uint32_t id
     rm.subject = "MMS V0 " + get_human_readable_timestamp(rm.timestamp);
     rm.content = dm.internal_message.content;
     rm.hash = crypto::cn_fast_hash(rm.content.data(), rm.content.size());
-    
+
     crypto::generate_signature(rm.hash, m_members[0].monero_address.m_view_public_key, state.view_secret_key, rm.signature);
-    
+
     bool success = m_transporter.send_message(rm);
   }
   else
@@ -779,7 +830,7 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
       // (but once started processing them, don't react to stop request anymore, avoid receiving them "partially)"
       return false;
     }
-    
+
     bool new_messages = false;
     for (size_t i = 0; i < transport_messages.size(); ++i)
     {
@@ -800,10 +851,10 @@ bool message_store::check_for_messages(const multisig_wallet_state &state, std::
 	{
 	  crypto::hash actual_hash = crypto::cn_fast_hash(rm.content.data(), rm.content.size());
           THROW_WALLET_EXCEPTION_IF(actual_hash != rm.hash, tools::error::wallet_internal_error, "Message hash mismatch");
-	  
+
 	  bool signature_valid = crypto::check_signature(actual_hash, rm.source_monero_address.m_view_public_key, rm.signature);
           THROW_WALLET_EXCEPTION_IF(!signature_valid, tools::error::wallet_internal_error, "Message signature not valid");
-	  
+
 	  std::string plaintext;
 	  decrypt(rm.content, rm.encryption_public_key, rm.iv, state.view_secret_key, plaintext);
 	  uint32_t index = add_message(state, sender_index, (message_type)rm.type, message_direction::in, plaintext);
