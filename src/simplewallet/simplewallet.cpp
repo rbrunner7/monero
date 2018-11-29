@@ -837,28 +837,32 @@ bool simple_wallet::print_fee_info(const std::vector<std::string> &args/* = std:
 
 bool simple_wallet::prepare_multisig(const std::vector<std::string> &args)
 {
-  m_command_successful = false;
-  bool by_mms = called_by_mms();
+  prepare_multisig_main(args, false);
+  return true;
+}
+
+bool simple_wallet::prepare_multisig_main(const std::vector<std::string> &args, bool by_mms)
+{
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
+    return false;
   }
   if (m_wallet->multisig())
   {
     fail_msg_writer() << tr("This wallet is already multisig");
-    return true;
+    return false;
   }
   if (m_wallet->watch_only())
   {
     fail_msg_writer() << tr("wallet is watch-only and cannot be made multisig");
-    return true;
+    return false;
   }
 
   if(m_wallet->get_num_transfer_details())
   {
     fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
-    return true;
+    return false;
   }
 
   SCOPED_WALLET_UNLOCK();
@@ -873,40 +877,43 @@ bool simple_wallet::prepare_multisig(const std::vector<std::string> &args)
     get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::key_set, multisig_info);
   }
 
-  m_command_successful = true;
   return true;
 }
 
 bool simple_wallet::make_multisig(const std::vector<std::string> &args)
 {
-  m_command_successful = false;
-  bool by_mms = called_by_mms();
+  make_multisig_main(args, false);
+  return true;
+}
+
+bool simple_wallet::make_multisig_main(const std::vector<std::string> &args, bool by_mms)
+{
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
+    return false;
   }
   if (m_wallet->multisig())
   {
     fail_msg_writer() << tr("This wallet is already multisig");
-    return true;
+    return false;
   }
   if (m_wallet->watch_only())
   {
     fail_msg_writer() << tr("wallet is watch-only and cannot be made multisig");
-    return true;
+    return false;
   }
 
   if(m_wallet->get_num_transfer_details())
   {
     fail_msg_writer() << tr("This wallet has been used before, please use a new wallet to create a multisig wallet");
-    return true;
+    return false;
   }
 
   if (args.size() < 2)
   {
     fail_msg_writer() << tr("usage: make_multisig <threshold> <multisiginfo1> [<multisiginfo2>...]");
-    return true;
+    return false;
   }
 
   // parse threshold
@@ -914,14 +921,14 @@ bool simple_wallet::make_multisig(const std::vector<std::string> &args)
   if (!string_tools::get_xtype_from_string(threshold, args[0]))
   {
     fail_msg_writer() << tr("Invalid threshold");
-    return true;
+    return false;
   }
 
   const auto orig_pwd_container = get_and_verify_password();
   if(orig_pwd_container == boost::none)
   {
     fail_msg_writer() << tr("Your original password was incorrect.");
-    return true;
+    return false;
   }
 
   LOCK_IDLE_SCOPE();
@@ -940,26 +947,24 @@ bool simple_wallet::make_multisig(const std::vector<std::string> &args)
       {
         get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::additional_key_set, multisig_extra_info);
       }
-      m_command_successful = true;
       return true;
     }
   }
   catch (const std::exception &e)
   {
     fail_msg_writer() << tr("Error creating multisig: ") << e.what();
-    return true;
+    return false;
   }
 
   uint32_t total;
   if (!m_wallet->multisig(NULL, &threshold, &total))
   {
     fail_msg_writer() << tr("Error creating multisig: new wallet is not multisig");
-    return true;
+    return false;
   }
   success_msg_writer() << std::to_string(threshold) << "/" << total << tr(" multisig address: ")
       << m_wallet->get_account().get_public_address_str(m_wallet->nettype());
 
-  m_command_successful = true;
   return true;
 }
 
