@@ -73,7 +73,7 @@ namespace multisig
     const crypto::public_key &multisig_pubkey,
     const crypto::public_key &common_pubkey,
     const std::uint32_t kex_rounds_complete,
-    kex_origins_map_t kex_origins_map,
+    multisig_keyset_map_memsafe_t kex_origins_map,
     std::string next_round_kex_message) :
       m_base_privkey{base_privkey},
       m_base_common_privkey{base_common_privkey},
@@ -100,14 +100,24 @@ namespace multisig
   //----------------------------------------------------------------------------------------------------------------------
   // multisig_account: EXTERNAL
   //----------------------------------------------------------------------------------------------------------------------
-  bool multisig_account::multisig_is_ready() const
+  bool multisig_account::main_kex_rounds_done() const
   {
     if (account_is_active())
-      return multisig_kex_rounds_required(m_signers.size(), m_threshold) == m_kex_rounds_complete;
+      return m_kex_rounds_complete >= multisig_kex_rounds_required(m_signers.size(), m_threshold);
     else
       return false;
   }
-    //----------------------------------------------------------------------------------------------------------------------
+  //----------------------------------------------------------------------------------------------------------------------
+  // multisig_account: EXTERNAL
+  //----------------------------------------------------------------------------------------------------------------------
+  bool multisig_account::multisig_is_ready() const
+  {
+    if (main_kex_rounds_done())
+      return m_kex_rounds_complete == multisig_kex_rounds_required(m_signers.size(), m_threshold) + 1;
+    else
+      return false;
+  }
+  //----------------------------------------------------------------------------------------------------------------------
   // multisig_account: INTERNAL
   //----------------------------------------------------------------------------------------------------------------------
   void multisig_account::set_multisig_config(const std::size_t threshold, std::vector<crypto::public_key> signers)
