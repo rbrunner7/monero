@@ -278,11 +278,9 @@ namespace multisig
       rct::scalarmultKey(derivation_rct, rct::pk2rct(pubkey_and_origins.first), rct::sk2rct(base_privkey));
       rct::scalarmultKey(derivation_rct, derivation_rct, rct::EIGHT);
 
-      crypto::public_key_memsafe derivation{rct::rct2pk(derivation_rct)};
-
       // retain mapping between pubkey's origins and the DH derivation
-      // note: if msg for last round, then caller must know how to handle these derivations properly
-      derivation_origins_map_out[derivation] = std::move(pubkey_and_origins.second);
+      // note: if working on last kex round, then caller must know how to handle these derivations properly
+      derivation_origins_map_out[rct::rct2pk(derivation_rct)] = std::move(pubkey_and_origins.second);
     }
   }
   //----------------------------------------------------------------------------------------------------------------------
