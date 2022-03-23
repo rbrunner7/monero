@@ -130,12 +130,13 @@ class MultisigTest():
         assert res.total == N_total
 
       while True:
-        n_empty = 0
-        for i in range(len(next_stage)):
-          if len(next_stage[i]) == 0:
-            n_empty += 1
-        assert n_empty == 0 or n_empty == len(next_stage)
-        if n_empty == len(next_stage):
+        n_ready = 0
+        for i in range(N_total):
+          res = self.wallet[i].is_multisig()
+          if res.ready == True:
+            n_ready += 1
+        assert n_ready == 0 or n_ready == N_total
+        if n_ready == N_total:
           break
         info = next_stage
         next_stage = []

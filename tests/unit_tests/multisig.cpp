@@ -120,7 +120,7 @@ static void check_results(const std::vector<std::string> &intermediate_infos,
 
   for (size_t i = 0; i < wallets.size(); ++i)
   {
-    EXPECT_TRUE(intermediate_infos[i].empty());
+    EXPECT_TRUE(!intermediate_infos[i].empty());
     bool ready;
     uint32_t threshold, total;
     EXPECT_TRUE(wallets[i].multisig(&ready, &threshold, &total));
@@ -203,13 +203,12 @@ static void make_wallets(std::vector<tools::wallet2>& wallets, unsigned int M)
   ++rounds_complete;
 
   // perform kex rounds until kex is complete
-  while (!intermediate_infos[0].empty())
+  bool ready{false};
+  while (!ready)
   {
-    bool ready{false};
     wallets[0].multisig(&ready);
-    EXPECT_FALSE(ready);
-
     intermediate_infos = exchange_round(wallets, intermediate_infos);
+    wallets[0].multisig(&ready);
 
     ++rounds_complete;
   }

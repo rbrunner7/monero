@@ -287,31 +287,6 @@ namespace multisig
   /**
   * INTERNAL
   *
-  * brief: multisig_kex_make_msg - Construct a kex msg for any round > 1 of multisig key construction.
-  * param: base_privkey - account's base private key, for performing DH exchanges and signing messages
-  * param: round - the round of the message that should be produced
-  * param: kex_rounds_required - the number of rounds to complete kex
-  * param: msg_pubkeys - pubkeys to include in the kex message
-  * return: multisig kex message for the specified round
-  */
-  //----------------------------------------------------------------------------------------------------------------------
-  static multisig_kex_msg multisig_kex_make_msg(const crypto::secret_key &base_privkey,
-    const std::uint32_t round,
-    const std::uint32_t kex_rounds_required,
-    std::vector<crypto::public_key> msg_pubkeys)
-  {
-    CHECK_AND_ASSERT_THROW_MES(round > 1, "Invalid call to multisig_kex_make_msg().");
-
-    // short-circuit to an empty message once the post-kex verification round is complete
-    if (round > kex_rounds_required + 1)
-      return multisig_kex_msg{};
-
-    return multisig_kex_msg{round, base_privkey, std::move(msg_pubkeys)};
-  }
-  //----------------------------------------------------------------------------------------------------------------------
-  /**
-  * INTERNAL
-  *
   * brief: check_messages_round - Check that a set of messages have an expected round number.
   * param: expanded_msgs - set of multisig kex messages to process
   * param: expected_round - round number the kex messages should have
@@ -712,6 +687,10 @@ namespace multisig
     {
       // post-kex verification round: check that the multisig pubkey was recommended by other signers
       CHECK_AND_ASSERT_THROW_MES(result_keys_to_origins_map.find(m_multisig_pubkey) != result_keys_to_origins_map.end(), "");
+
+      // save key that should be recommended to other signers
+      // - for convenience, re-recommend the post-kex verification message once an account is complete
+      next_msg_keys.push_back(m_multisig_pubkey);
     }
     else if (m_kex_rounds_complete + 1 == kex_rounds_required)
     {
@@ -789,11 +768,11 @@ namespace multisig
     // a full set of msgs has been collected and processed, so the 'round is complete'
     ++m_kex_rounds_complete;
 
-    // make next round's message
-    m_next_round_kex_message = multisig_kex_make_msg(m_base_privkey,
-      m_kex_rounds_complete + 1,
-      kex_rounds_required,
-      std::move(next_msg_keys)).get_msg();
+    // make next round's message (or reproduce the post-kex verification round if kex is complete)
+    m_next_round_kex_message = multisig_kex_msg{
+      (m_kex_rounds_complete > kex_rounds_required ? kex_rounds_required : m_kex_rounds_complete) + 1,
+      m_base_privkey,
+      std::move(next_msg_keys)}.get_msg();
   }
   //----------------------------------------------------------------------------------------------------------------------
   // multisig_account: INTERNAL
