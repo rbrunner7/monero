@@ -95,9 +95,9 @@ namespace multisig
     CHECK_AND_ASSERT_THROW_MES(m_kex_rounds_complete <= kex_rounds_required + 1,
       "multisig account: tried to reconstruct account, but kex rounds complete counter is invalid.");
 
-    // once an account is complete, the 'next kex msg' is always the post-kex verification message
+    // once an account is done with kex, the 'next kex msg' is always the post-kex verification message
     //   i.e. the multisig account pubkey signed by the signer's privkey
-    if (multisig_is_ready())
+    if (main_kex_rounds_done())
     {
       m_next_round_kex_message = multisig_kex_msg{kex_rounds_required + 1,
         m_base_privkey,
