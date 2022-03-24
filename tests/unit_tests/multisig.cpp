@@ -203,10 +203,10 @@ static void make_wallets(std::vector<tools::wallet2>& wallets, unsigned int M)
   ++rounds_complete;
 
   // perform kex rounds until kex is complete
-  bool ready{false};
+  bool ready;
+  wallets[0].multisig(&ready);
   while (!ready)
   {
-    wallets[0].multisig(&ready);
     intermediate_infos = exchange_round(wallets, intermediate_infos);
     wallets[0].multisig(&ready);
 
