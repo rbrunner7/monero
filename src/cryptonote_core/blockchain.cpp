@@ -5467,6 +5467,16 @@ cryptonote::blobdata Blockchain::get_txpool_tx_blob(const crypto::hash& txid, re
   return m_db->get_txpool_tx_blob(txid, tx_category);
 }
 
+uint64_t Blockchain::get_txpool_logical_timestamp() const
+{
+  return m_db->get_txpool_logical_timestamp();
+}
+
+void Blockchain::set_txpool_logical_timestamp(uint64_t logical_timestamp)
+{
+  m_db->set_txpool_logical_timestamp(logical_timestamp);
+}
+
 bool Blockchain::for_all_txpool_txes(std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const cryptonote::blobdata_ref*)> f, bool include_blob, relay_category tx_category) const
 {
   return m_db->for_all_txpool_txes(f, include_blob, tx_category);

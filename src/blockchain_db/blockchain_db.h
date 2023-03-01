@@ -1585,6 +1585,26 @@ public:
   virtual cryptonote::blobdata get_txpool_tx_blob(const crypto::hash& txid, relay_category tx_category) const = 0;
 
   /**
+   * @brief load the mempool logical timestamp
+   *
+   * This timestamp is a means to partially order tx pool events. This value should only ever
+   * increase monotonically. Preferably, this value doesn't corellate with any real-life time.
+   *
+   * @return uint64_t the mempool logical timestamp, or 0 if not present
+   */
+  virtual uint64_t get_txpool_logical_timestamp() const = 0;
+
+  /**
+   * @brief save the mempool logical timestamp
+   *
+   * This timestamp is a means to partially order tx pool events. This value should only ever
+   * increase monotonically. Preferably, this value doesn't corellate with any real-life time.
+   *
+   * @param logical_timestamp the logical timestamp to save
+   */
+  virtual void set_txpool_logical_timestamp(uint64_t logical_timestamp) = 0;
+
+  /**
    * @brief Check if `tx_hash` relay status is in `category`.
    *
    * @param tx_hash hash of the transaction to lookup

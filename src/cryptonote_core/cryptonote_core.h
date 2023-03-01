@@ -526,6 +526,13 @@ namespace cryptonote
       */
      bool get_pool_info(time_t start_time, bool include_sensitive_txes, size_t max_tx_count, std::vector<std::pair<crypto::hash, tx_memory_pool::tx_details>>& added_txs, std::vector<crypto::hash>& remaining_added_txids, std::vector<crypto::hash>& removed_txs, bool& incremental) const;
 
+     /**
+      * @copydoc tx_memory_pool::get_txpool_logical_timestamp
+      *
+      * @note see tx_memory_pool::get_txpool_logical_timestamp
+      */
+     uint64_t get_txpool_logical_timestamp() const;
+
     /**
       * @copydoc tx_memory_pool::get_transactions
       * @param include_sensitive_txes include private transactions

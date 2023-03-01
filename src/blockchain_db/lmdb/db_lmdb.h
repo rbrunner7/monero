@@ -292,6 +292,8 @@ public:
   virtual bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t &meta) const;
   virtual bool get_txpool_tx_blob(const crypto::hash& txid, cryptonote::blobdata& bd, relay_category tx_category) const;
   virtual cryptonote::blobdata get_txpool_tx_blob(const crypto::hash& txid, relay_category tx_category) const;
+  virtual uint64_t get_txpool_logical_timestamp() const override;
+  virtual void set_txpool_logical_timestamp(uint64_t logical_timestamp) override;
   virtual uint32_t get_blockchain_pruning_seed() const;
   virtual bool prune_blockchain(uint32_t pruning_seed = 0);
   virtual bool update_pruning();
