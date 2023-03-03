@@ -598,7 +598,7 @@ namespace cryptonote
 
     CHECK_PAYMENT(req, res, 1);
 
-    res.daemon_time = (uint64_t)time(NULL);
+    res.daemon_time = m_core.get_txpool_logical_timestamp();
     // Always set daemon time, and set it early rather than late, as delivering some incremental pool
     // info twice because of slightly overlapping time intervals is no problem, whereas producing gaps
     // and never delivering something is
@@ -634,7 +634,7 @@ namespace cryptonote
 
       bool incremental;
       std::vector<std::pair<crypto::hash, tx_memory_pool::tx_details>> added_pool_txs;
-      bool success = m_core.get_pool_info((time_t)req.pool_info_since, allow_sensitive, max_tx_count, added_pool_txs, res.remaining_added_pool_txids, res.removed_pool_txids, incremental);
+      const bool success = m_core.get_pool_info(req.pool_info_since, allow_sensitive, max_tx_count, added_pool_txs, res.remaining_added_pool_txids, res.removed_pool_txids, incremental);
       if (success)
       {
         res.added_pool_txs.clear();
@@ -660,9 +660,6 @@ namespace cryptonote
           info.double_spend_seen = added_pool_tx.second.double_spend_seen;
           res.added_pool_txs.push_back(std::move(info));
         }
-      }
-      if (success)
-      {
         res.pool_info_extent = incremental ? COMMAND_RPC_GET_BLOCKS_FAST::INCREMENTAL : COMMAND_RPC_GET_BLOCKS_FAST::FULL;
       }
       else

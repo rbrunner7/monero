@@ -1749,6 +1749,11 @@ namespace cryptonote
     return m_mempool.get_pool_info(start_time, include_sensitive_txes, max_tx_count, added_txs, remaining_added_txids, removed_txs, incremental);
   }
   //-----------------------------------------------------------------------------------------------
+  uint64_t core::get_txpool_logical_timestamp() const
+  {
+    return m_mempool.get_txpool_logical_timestamp();
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::get_pool_transaction_stats(struct txpool_stats& stats, bool include_sensitive_data) const
   {
     m_mempool.get_transaction_stats(stats, include_sensitive_data);

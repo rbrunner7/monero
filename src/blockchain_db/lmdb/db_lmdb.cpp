@@ -1948,6 +1948,82 @@ cryptonote::blobdata BlockchainLMDB::get_txpool_tx_blob(const crypto::hash& txid
   return bd;
 }
 
+uint64_t BlockchainLMDB::get_txpool_logical_timestamp() const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
+  // Read-only setup
+  check_open();
+  TXN_PREFIX_RDONLY();
+  RCURSOR(properties)
+
+  // Retreive value from DB
+  MDB_val_str(k, "txpool_logical_timestamp");
+  MDB_val v;
+  const int result = mdb_cursor_get(m_cur_properties, &k, &v, MDB_SET);
+  if (result == MDB_NOTFOUND)
+  {
+    MDEBUG("txpool_logical_timestamp not found in DB: returning 0");
+    return 0;
+  }
+  else if (result)
+  {
+    throw0(DB_ERROR(lmdb_error("Failed to retrieve txpool_logical_timestamp", result).c_str()));
+  }
+  else if (v.mv_size != sizeof(uint64_t))
+  {
+    throw0(DB_ERROR("Failed to retrieve or create txpool_logical_timestamp: unexpected value size"));
+  }
+
+  // Copy value to local variable then end read-only dbtx
+  uint64_t txpool_logical_timestamp;
+  memcpy(&txpool_logical_timestamp, v.mv_data, sizeof(txpool_logical_timestamp));
+  TXN_POSTFIX_RDONLY();
+
+  MDEBUG("Loaded txpool_logical_timestamp value " << txpool_logical_timestamp << " from DB");
+  return txpool_logical_timestamp;
+}
+
+void BlockchainLMDB::set_txpool_logical_timestamp(uint64_t logical_timestamp)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
+  // Read existing timestamp in DB, compare, and log change information
+  const uint64_t old_ts = get_txpool_logical_timestamp();
+  if (logical_timestamp == old_ts)
+  {
+    // Detect NOOP and return early
+    MDEBUG("Did not update txpool_logical_timestamp value: " << old_ts);
+    return;
+  }
+  else if (logical_timestamp < old_ts)
+  {
+    // Non-monotonicly increasing timestamp values can cause refresh inconsistencies
+    MWARNING("txpool_logical_timestamp is decreasing from " << old_ts << " to " << logical_timestamp << ". This could cause refresh inconsistencies");
+  }
+  else
+  {
+    MDEBUG("Updating txpool_logical_timestamp from " << old_ts << " to " << logical_timestamp);
+  }
+
+  // Write setup
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  block_wtxn_start();
+  CURSOR(properties);
+
+  // Store new timestamp value
+  MDB_val_str(k, "txpool_logical_timestamp");
+  MDB_val_set(v, logical_timestamp);
+  const int result = mdb_cursor_put(m_cur_properties, &k, &v, 0);
+  if (result)
+  {
+    throw0(DB_ERROR(lmdb_error("Failed to set txpool_logical_timestamp: ", result).c_str()));
+    block_wtxn_abort();
+  }
+  block_wtxn_stop();
+}
+
 uint32_t BlockchainLMDB::get_blockchain_pruning_seed() const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);

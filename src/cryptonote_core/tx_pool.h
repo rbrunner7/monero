@@ -484,7 +484,14 @@ namespace cryptonote
      *
      * @return true on success, false on error
      */
-    bool get_pool_info(time_t start_time, bool include_sensitive, size_t max_tx_count, std::vector<std::pair<crypto::hash, tx_details>>& added_txs, std::vector<crypto::hash>& remaining_added_txids, std::vector<crypto::hash>& removed_txs, bool& incremental) const;
+    bool get_pool_info(uint64_t start_time, bool include_sensitive, size_t max_tx_count, std::vector<std::pair<crypto::hash, tx_details>>& added_txs, std::vector<crypto::hash>& remaining_added_txids, std::vector<crypto::hash>& removed_txs, bool& incremental) const;
+
+    /**
+     * @brief get a monotonically increasing counter which is used to order incremental pool events
+     *
+     * Do not assume that this counter value will be shared between mempool instances.
+     */
+    uint64_t get_txpool_logical_timestamp() const;
 
   private:
 
@@ -627,10 +634,10 @@ private:
     std::atomic<uint64_t> m_cookie; //!< incremented at each change
 
     // Info when transactions entered the pool, accessible by txid
-    std::unordered_map<crypto::hash, time_t> m_added_txs_by_id;
+    std::unordered_map<crypto::hash, uint64_t> m_added_txs_by_id;
 
     // Info at what time the pool started to track the adding of transactions
-    time_t m_added_txs_start_time;
+    uint64_t m_added_txs_start_time;
 
     struct removed_tx_info
     {
@@ -640,11 +647,11 @@ private:
 
     // Info about transactions that were removed from the pool, ordered by the time
     // of deletion
-    std::multimap<time_t, removed_tx_info> m_removed_txs_by_time;
+    std::multimap<uint64_t, removed_tx_info> m_removed_txs_by_time;
 
     // Info how far back in time the list of removed tx ids currently reaches
     // (it gets shorted periodically to prevent overflow)
-    time_t m_removed_txs_start_time;
+    uint64_t m_removed_txs_start_time;
 
     /**
      * @brief get an iterator to a transaction in the sorted container
