@@ -19,7 +19,7 @@ target_link_libraries(polyseed_wrapper
 PUBLIC
         polyseed
         utf8proc
-        ${SODIUM_LIBRARY}
+        sodium
         PRIVATE
         ${EXTRA_LIBRARIES}
 )

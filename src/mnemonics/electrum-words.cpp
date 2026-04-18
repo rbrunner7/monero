@@ -371,6 +371,31 @@ namespace crypto
       return true;
     }
 
+    bool words_to_bytes_ex(const epee::wipeable_string &words, crypto::secret_key& dst,
+      std::string &language_name, bool &is_polyseed, polyseed::data &polyseed)
+    {
+      is_polyseed = false;
+      polyseed::language polyseed_language;
+
+      try
+      {
+        polyseed_language = polyseed.decode(words.data());
+        is_polyseed = true;
+      }
+      catch (const std::exception &e)
+      {
+      }
+
+      if (is_polyseed)
+      {
+        polyseed.keygen(&dst, sizeof(crypto::secret_key));
+        language_name = polyseed_language.name();
+        return true;
+      }
+
+      return words_to_bytes(words, dst, language_name);
+    }
+
     /*!
      * \brief Converts bytes (secret key) to seed words.
      * \param  src           Secret key

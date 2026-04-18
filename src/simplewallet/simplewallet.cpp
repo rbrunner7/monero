@@ -4054,6 +4054,9 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
 
     std::string old_language;
+    bool is_polyseed = false;
+    polyseed::data polyseed(POLYSEED_MONERO);
+
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
     if (m_restore_deterministic_wallet || m_restore_multisig_wallet)
     {
@@ -4101,7 +4104,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
             }
             m_electrum_seed += electrum_seed;
             m_electrum_seed += ' ';
-          } while (might_be_partial_seed(m_electrum_seed));
+          } while (/* might_be_partial_seed(m_electrum_seed) */ false);
         }
       }
 
@@ -4117,7 +4120,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       }
       else
       {
-        if (!crypto::ElectrumWords::words_to_bytes(m_electrum_seed, m_recovery_key, old_language))
+        if (!crypto::ElectrumWords::words_to_bytes_ex(m_electrum_seed, m_recovery_key, old_language, is_polyseed, polyseed))
         {
           fail_msg_writer() << tr("Electrum-style word list failed verification");
           return false;
@@ -4203,7 +4206,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         fail_msg_writer() << tr("failed to parse spend key secret key");
         return false;
       }
-      auto r = new_wallet(vm, m_recovery_key, true, false, "");
+      auto r = new_wallet(vm, m_recovery_key, true, false, "", false, polyseed);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -4474,7 +4477,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       if (m_restore_multisig_wallet)
         r = new_wallet(vm, multisig_keys, seed_pass, old_language);
       else
-        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language);
+        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language, is_polyseed, polyseed);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -4483,8 +4486,31 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     if (m_restoring && m_generate_from_json.empty() && m_generate_from_device.empty())
     {
       m_wallet->explicit_refresh_from_block_height(!(command_line::is_arg_defaulted(vm, arg_restore_height) &&
-        command_line::is_arg_defaulted(vm, arg_restore_date)));
-      if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
+        command_line::is_arg_defaulted(vm, arg_restore_date)) || is_polyseed);
+        
+      if (is_polyseed)
+      {
+        bool got_height_from_daemon = false;
+        try
+        {
+          uint32_t version;
+          bool connected = try_connect_to_daemon(false, &version);
+          if (connected && version >= MAKE_CORE_RPC_VERSION(1, 6))
+          {
+            m_restore_height = m_wallet->get_blockchain_height_by_timestamp(polyseed.birthday());
+            got_height_from_daemon = true;
+          }
+        }
+        catch (const std::runtime_error& e)
+        {
+        }
+        if (!got_height_from_daemon)
+        {
+          m_restore_height = m_wallet->get_approximate_blockchain_height(polyseed.birthday());
+        }
+      }
+
+      else if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
       {
         uint16_t year;
         uint8_t month;
@@ -4773,7 +4799,7 @@ boost::optional<tools::password_container> simple_wallet::get_and_verify_passwor
 }
 //----------------------------------------------------------------------------------------------------
 boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language)
+  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language, bool is_polyseed, polyseed::data &polyseed)
 {
   std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
   try { rc = tools::wallet2::make_new(vm, false, password_prompter); }
@@ -4829,7 +4855,13 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   crypto::secret_key recovery_val;
   try
   {
-    recovery_val = m_wallet->generate(m_wallet_file, std::move(rc.second).password(), recovery_key, recover, two_random, create_address_file);
+    if (is_polyseed)
+    {
+      m_wallet->generate(m_wallet_file, std::move(rc.second).password(), polyseed, "", recover, m_restore_height, create_address_file);
+    }
+    else {
+      recovery_val = m_wallet->generate(m_wallet_file, std::move(rc.second).password(), recovery_key, recover, two_random, create_address_file);
+    }
     message_writer(console_color_white, true) << tr("Generated new wallet: ")
       << m_wallet->get_account().get_public_address_str(m_wallet->nettype());
     PAUSE_READLINE();
@@ -4846,7 +4878,15 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   // convert rng value to electrum-style word list
   epee::wipeable_string electrum_words;
 
-  crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language);
+  if (is_polyseed)
+  {
+    polyseed::language polyseed_language = polyseed::get_lang_by_name(mnemonic_language);
+    polyseed.encode(polyseed_language, electrum_words);
+  }
+  else
+  {
+    crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language);
+  }
 
   success_msg_writer() <<
     "**********************************************************************\n" <<

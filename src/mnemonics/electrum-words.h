@@ -42,6 +42,7 @@
 #include <string>
 #include <cstdint>
 #include "crypto/crypto.h"  // for declaration of crypto::secret_key
+#include "polyseed/polyseed.hpp"
 
 namespace epee {  class wipeable_string; }
 
@@ -82,6 +83,9 @@ namespace crypto
      */
     bool words_to_bytes(const epee::wipeable_string &words, crypto::secret_key& dst,
       std::string &language_name);
+
+    bool words_to_bytes_ex(const epee::wipeable_string &words, crypto::secret_key& dst,
+      std::string &language_name, bool &is_polyseed, polyseed::data &polyseed);
 
     /*!
      * \brief Converts bytes to seed words.
