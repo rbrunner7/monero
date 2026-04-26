@@ -312,7 +312,7 @@ namespace cryptonote
      * 
      * \return The chosen language.
      */
-    std::string get_mnemonic_language();
+    std::string get_mnemonic_language(bool for_polyseed);
 
     /*!
      * \brief When --do-not-relay option is specified, save the raw tx hex blob to a file instead of calling m_wallet->commit_tx(ptx).

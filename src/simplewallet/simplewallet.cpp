@@ -986,7 +986,7 @@ bool simple_wallet::seed_set_language(const std::vector<std::string> &args/* = s
     password = pwd_container->password();
   }
 
-  std::string mnemonic_language = get_mnemonic_language();
+  std::string mnemonic_language = get_mnemonic_language(m_wallet->is_polyseed());
   if (mnemonic_language.empty())
     return true;
 
@@ -4087,7 +4087,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
 
     std::string old_language;
-    bool is_polyseed = false;
+    bool is_polyseed = /* @@@@ false */ true;
     polyseed::data polyseed(POLYSEED_MONERO);
 
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
@@ -4776,14 +4776,26 @@ bool simple_wallet::try_connect_to_daemon(bool silent, uint32_t* version)
  * 
  * \return The chosen language.
  */
-std::string simple_wallet::get_mnemonic_language()
+std::string simple_wallet::get_mnemonic_language(bool for_polyseed)
 {
   std::vector<std::string> language_list_self, language_list_english;
   const std::vector<std::string> &language_list = m_use_english_language_names ? language_list_english : language_list_self;
   std::string language_choice;
   int language_number = -1;
-  crypto::ElectrumWords::get_language_list(language_list_self, false);
-  crypto::ElectrumWords::get_language_list(language_list_english, true);
+  if (for_polyseed)
+  {
+    const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
+    for (auto polyseed_language: polyseed_languages)
+    {
+      language_list_self.push_back(polyseed_language.name());
+      language_list_english.push_back(polyseed_language.name_en());
+    }
+  }
+  else
+  {
+    crypto::ElectrumWords::get_language_list(language_list_self, false);
+    crypto::ElectrumWords::get_language_list(language_list_english, true);
+  }
   std::cout << tr("List of available languages for your wallet's seed:") << std::endl;
   std::cout << tr("If your display freezes, exit blind with ^C, then run again with --use-english-language-names") << std::endl;
   int ii;
@@ -4856,6 +4868,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   std::string mnemonic_language = old_language;
 
+  // Check for mnemonic language from command line argument
   std::vector<std::string> language_list;
   crypto::ElectrumWords::get_language_list(language_list);
   if (mnemonic_language.empty() && std::find(language_list.begin(), language_list.end(), m_mnemonic_language) != language_list.end())
@@ -4876,7 +4889,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
       message_writer(console_color_green, false) << "\n" << tr("You had been using "
         "a deprecated version of the wallet. Please use the new seed that we provide.\n");
     }
-    mnemonic_language = get_mnemonic_language();
+    mnemonic_language = get_mnemonic_language(is_polyseed);
     if (mnemonic_language.empty())
       return {};
   }
@@ -4890,6 +4903,10 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   {
     if (is_polyseed)
     {
+      if (!recover)
+      {
+        polyseed.create(0);
+      }
       m_wallet->generate(m_wallet_file, std::move(rc.second).password(), polyseed, "", recover, m_restore_height, create_address_file);
     }
     else {
@@ -5159,7 +5176,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
       {
         message_writer(console_color_green, false) << "\n" << tr("You had been using "
           "a deprecated version of the wallet. Please proceed to upgrade your wallet.\n");
-        std::string mnemonic_language = get_mnemonic_language();
+        std::string mnemonic_language = get_mnemonic_language(true);
         if (mnemonic_language.empty())
           return {};
         m_wallet->set_seed_language(mnemonic_language);
