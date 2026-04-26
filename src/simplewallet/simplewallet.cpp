@@ -906,11 +906,20 @@ bool simple_wallet::print_seed(bool encrypted)
   if (ms_status.multisig_is_active)
     success = m_wallet->get_multisig_seed(seed, seed_pass);
   else if (m_wallet->is_deterministic())
-    success = m_wallet->get_seed(seed, seed_pass);
+  {
+    if (m_wallet->is_polyseed())
+    {
+      success = m_wallet->get_polyseed(seed, seed_pass);
+    }
+    else
+    {
+      success = m_wallet->get_seed(seed, seed_pass);
+    }
+  }
 
   if (success) 
   {
-    print_seed(seed);
+    print_seed(seed, seed_pass);
   }
   else
   {
@@ -3948,29 +3957,53 @@ bool simple_wallet::ask_wallet_create_if_needed()
  * \brief Prints the seed with a nice message
  * \param seed seed to print
  */
-void simple_wallet::print_seed(const epee::wipeable_string &seed)
+void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass)
 {
+  std::string seed_type;
+  if (m_wallet->get_multisig_status().multisig_is_active)
+  {
+    seed_type = tr("string");
+  }
+  else if (m_wallet->is_polyseed())
+  {
+    seed_type = tr("16 word Polyseed");
+  }
+  else
+  {
+    seed_type = tr("25 words");
+  }
   success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
-    "your email or on file storage services outside of your immediate control.\n")) % (m_wallet->get_multisig_status().multisig_is_active ? tr("string") : tr("25 words"));
+    "your email or on file storage services outside of your immediate control.\n")) % seed_type;
   // don't log
-  int space_index = 0;
-  size_t len  = seed.size();
-  for (const char *ptr = seed.data(); len--; ++ptr)
+  if (m_wallet->is_polyseed())
   {
-    if (*ptr == ' ')
+    std::cout << seed.data() << std::endl;
+    if (!seed_pass.empty())
     {
-      if (space_index == 15 || space_index == 7)
-        putchar('\n');
+      std::cout << std::endl << tr("Seed offset passphrase: ") << seed_pass.data() << std::endl;
+    }
+  }
+  else
+  {
+    int space_index = 0;
+    size_t len  = seed.size();
+    for (const char *ptr = seed.data(); len--; ++ptr)
+    {
+      if (*ptr == ' ')
+      {
+        if (space_index == 15 || space_index == 7)
+          putchar('\n');
+        else
+          putchar(*ptr);
+        ++space_index;
+      }
       else
         putchar(*ptr);
-      ++space_index;
     }
-    else
-      putchar(*ptr);
+    putchar('\n');
+    fflush(stdout);
   }
-  putchar('\n');
-  fflush(stdout);
 }
 //----------------------------------------------------------------------------------------------------
 static bool might_be_partial_seed(const epee::wipeable_string &words)
@@ -4903,7 +4936,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   if (!two_random)
   {
-    print_seed(electrum_words);
+    print_seed(electrum_words, "");
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -5135,7 +5168,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
         // Display the seed
         epee::wipeable_string seed;
         m_wallet->get_seed(seed);
-        print_seed(seed);
+        print_seed(seed, "");
       }
       else
       {

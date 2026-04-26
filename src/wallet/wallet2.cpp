@@ -1449,6 +1449,20 @@ bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeab
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_string& passphrase) const
+{
+  if (!m_polyseed)
+  {
+    return false;
+  }
+
+  polyseed::data data(POLYSEED_MONERO);
+  data.load(get_account().get_keys().m_polyseed);
+  data.encode(polyseed::get_lang_by_name(seed_language), polyseed);
+  passphrase = get_account().get_keys().m_passphrase;
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeable_string &passphrase) const
 {
   const multisig::multisig_account_status ms_status{get_multisig_status()};

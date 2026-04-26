@@ -1114,7 +1114,9 @@ private:
      * \brief Checks if deterministic wallet
      */
     bool is_deterministic() const;
+    bool is_polyseed() const { return m_polyseed; }
     bool get_seed(epee::wipeable_string& electrum_words, const epee::wipeable_string &passphrase = epee::wipeable_string()) const;
+    bool get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_string& passphrase) const;
 
     /*!
      * \brief Gets the seed language
