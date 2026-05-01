@@ -97,7 +97,7 @@ namespace cryptonote
     boost::optional<tools::password_container> get_and_verify_password() const;
 
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,
-        bool recover, bool two_random, const std::string &old_language, bool is_polyseed, polyseed::data &polyseed);
+        bool recover, bool two_random, const std::string &old_language, bool is_polyseed, polyseed::data &polyseed, const epee::wipeable_string &seed_pass);
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,
         const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm,

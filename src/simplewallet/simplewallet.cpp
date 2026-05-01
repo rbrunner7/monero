@@ -4239,7 +4239,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         fail_msg_writer() << tr("failed to parse spend key secret key");
         return false;
       }
-      auto r = new_wallet(vm, m_recovery_key, true, false, "", false, polyseed);
+      auto r = new_wallet(vm, m_recovery_key, true, false, "", false, polyseed, seed_pass);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -4510,7 +4510,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       if (m_restore_multisig_wallet)
         r = new_wallet(vm, multisig_keys, seed_pass, old_language);
       else
-        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language, is_polyseed, polyseed);
+        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language, is_polyseed, polyseed, seed_pass);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -4844,7 +4844,8 @@ boost::optional<tools::password_container> simple_wallet::get_and_verify_passwor
 }
 //----------------------------------------------------------------------------------------------------
 boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language, bool is_polyseed, polyseed::data &polyseed)
+  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language,
+  bool is_polyseed, polyseed::data &polyseed, const epee::wipeable_string &seed_pass)
 {
   std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
   try { rc = tools::wallet2::make_new(vm, false, password_prompter); }
@@ -4907,7 +4908,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
       {
         polyseed.create(0);
       }
-      m_wallet->generate(m_wallet_file, std::move(rc.second).password(), polyseed, "", recover, m_restore_height, create_address_file);
+      m_wallet->generate(m_wallet_file, std::move(rc.second).password(), polyseed, seed_pass, recover, m_restore_height, create_address_file);
     }
     else {
       recovery_val = m_wallet->generate(m_wallet_file, std::move(rc.second).password(), recovery_key, recover, two_random, create_address_file);

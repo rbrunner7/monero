@@ -263,10 +263,24 @@ DISABLE_VS_WARNINGS(4244 4345)
   //-----------------------------------------------------------------
   void account_base::create_from_polyseed(const polyseed::data& seed, const epee::wipeable_string &passphrase)
   {
-    crypto::secret_key secret_key;
-    seed.keygen(&secret_key, sizeof(secret_key));
+    bool is_encrypted = seed.encrypted();
+    bool has_passphrase = !passphrase.empty();
 
-    if (!passphrase.empty()) {
+    polyseed_storage storage;
+    seed.save(storage);
+    polyseed::data seed_copy(POLYSEED_MONERO);
+    seed_copy.load(storage);
+
+    if (is_encrypted) {
+      if (!has_passphrase) {
+        throw std::runtime_error("encrypted polyseed needs a passphrase");
+      }
+      seed_copy.crypt(passphrase.data());
+    }
+    crypto::secret_key secret_key;
+    seed_copy.keygen(&secret_key, sizeof(secret_key));
+
+    if (!is_encrypted && has_passphrase) {
       secret_key = cryptonote::decrypt_key(secret_key, passphrase);
     }
 
