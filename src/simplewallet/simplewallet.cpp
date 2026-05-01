@@ -188,6 +188,7 @@ namespace
   const command_line::arg_descriptor<bool> arg_create_address_file = {"create-address-file", sw::tr("Create an address file for new wallets"), false};
   const command_line::arg_descriptor<std::string> arg_subaddress_lookahead = {"subaddress-lookahead", tools::wallet2::tr("Set subaddress lookahead sizes to <major>:<minor>"), ""};
   const command_line::arg_descriptor<bool> arg_use_english_language_names = {"use-english-language-names", sw::tr("Display English language names"), false};
+  const command_line::arg_descriptor<bool> arg_use_legacy_seed = {"use-legacy-seed", sw::tr("Use 25 word legacy seed instead of Polyseed"), false};
 
   const command_line::arg_descriptor< std::vector<std::string> > arg_command = {"command", ""};
 
@@ -4087,7 +4088,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
 
     std::string old_language;
-    bool is_polyseed = /* @@@@ false */ true;
+    bool is_polyseed = !m_use_legacy_seed;
     polyseed::data polyseed(POLYSEED_MONERO);
 
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
@@ -4711,6 +4712,7 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_non_deterministic             = command_line::get_arg(vm, arg_non_deterministic);
   m_restore_height                = command_line::get_arg(vm, arg_restore_height);
   m_restore_date                  = command_line::get_arg(vm, arg_restore_date);
+  m_use_legacy_seed               = command_line::get_arg(vm, arg_use_legacy_seed);
   m_do_not_relay                  = command_line::get_arg(vm, arg_do_not_relay);
   m_subaddress_lookahead          = command_line::get_arg(vm, arg_subaddress_lookahead);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
@@ -10527,6 +10529,7 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_electrum_seed );
   command_line::add_arg(desc_params, arg_restore_height);
   command_line::add_arg(desc_params, arg_restore_date);
+  command_line::add_arg(desc_params, arg_use_legacy_seed);
   command_line::add_arg(desc_params, arg_do_not_relay);
   command_line::add_arg(desc_params, arg_create_address_file);
   command_line::add_arg(desc_params, arg_subaddress_lookahead);
