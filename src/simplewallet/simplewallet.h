@@ -110,6 +110,7 @@ namespace cryptonote
     bool spendkey(const std::vector<std::string> &args = std::vector<std::string>());
     bool seed(const std::vector<std::string> &args = std::vector<std::string>());
     bool encrypted_seed(const std::vector<std::string> &args = std::vector<std::string>());
+    bool legacy_seed(const std::vector<std::string> &args = std::vector<std::string>());
     bool restore_height(const std::vector<std::string> &args = std::vector<std::string>());
 
     /*!
@@ -270,7 +271,7 @@ namespace cryptonote
     bool accept_loaded_tx(const tools::wallet2::signed_tx_set &txs);
     bool process_ring_members(const std::vector<tools::wallet2::pending_tx>& ptx_vector, std::ostream& ostr, bool verbose);
     std::string get_prompt() const;
-    bool print_seed(bool encrypted);
+    bool print_seed(bool encrypted, bool as_legacy_seed);
     void key_images_sync_intern();
     void on_refresh_finished(uint64_t start_height, uint64_t fetched_blocks, bool is_init, bool received_money);
     std::pair<std::string, std::string> show_outputs_line(const std::vector<uint64_t> &heights, uint64_t blockchain_height, uint64_t highlight_idx = std::numeric_limits<uint64_t>::max()) const;
@@ -303,7 +304,7 @@ namespace cryptonote
      * \brief Prints the seed with a nice message
      * \param seed seed to print
      */
-    void print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass);
+    void print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed);
 
     /*!
      * \brief Gets the word seed language from the user.

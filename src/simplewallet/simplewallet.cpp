@@ -860,7 +860,7 @@ bool simple_wallet::spendkey(const std::vector<std::string> &args/* = std::vecto
   return true;
 }
 
-bool simple_wallet::print_seed(bool encrypted)
+bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
 {
   bool success =  false;
   epee::wipeable_string seed;
@@ -886,6 +886,11 @@ bool simple_wallet::print_seed(bool encrypted)
       return true;
     }
   }
+  if (as_legacy_seed && !m_wallet->is_polyseed())
+  {
+    fail_msg_writer() << tr("wallet does not have a Polyseed");
+    return true;
+  }
 
   SCOPED_WALLET_UNLOCK();
 
@@ -910,7 +915,14 @@ bool simple_wallet::print_seed(bool encrypted)
   {
     if (m_wallet->is_polyseed())
     {
-      success = m_wallet->get_polyseed(seed, seed_pass);
+      if (as_legacy_seed)
+      {
+        success = m_wallet->get_seed(seed, "");
+      }
+      else
+      {
+        success = m_wallet->get_polyseed(seed, seed_pass);
+      }
     }
     else
     {
@@ -920,7 +932,7 @@ bool simple_wallet::print_seed(bool encrypted)
 
   if (success) 
   {
-    print_seed(seed, seed_pass);
+    print_seed(seed, seed_pass, as_legacy_seed);
   }
   else
   {
@@ -931,12 +943,17 @@ bool simple_wallet::print_seed(bool encrypted)
 
 bool simple_wallet::seed(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
-  return print_seed(false);
+  return print_seed(false, false);
 }
 
 bool simple_wallet::encrypted_seed(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
-  return print_seed(true);
+  return print_seed(true, false);
+}
+
+bool simple_wallet::legacy_seed(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
+{
+  return print_seed(false, true);
 }
 
 bool simple_wallet::restore_height(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
@@ -3292,6 +3309,9 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("seed",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::seed, _1),
                            tr("Display the Electrum-style mnemonic seed"));
+  m_cmd_binder.set_handler("legacy_seed",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::legacy_seed, _1),
+                           tr("Display a Polyseed as a legacy seed"));
   m_cmd_binder.set_handler("restore_height",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::restore_height, _1),
                            tr("Display the restore height"));
@@ -3958,14 +3978,14 @@ bool simple_wallet::ask_wallet_create_if_needed()
  * \brief Prints the seed with a nice message
  * \param seed seed to print
  */
-void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass)
+void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed)
 {
   std::string seed_type;
   if (m_wallet->get_multisig_status().multisig_is_active)
   {
     seed_type = tr("string");
   }
-  else if (m_wallet->is_polyseed())
+  else if (m_wallet->is_polyseed() && !as_legacy_seed)
   {
     seed_type = tr("16 word Polyseed");
   }
@@ -3976,6 +3996,10 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
   success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
     "your email or on file storage services outside of your immediate control.\n")) % seed_type;
+  if (as_legacy_seed)
+  {
+    success_msg_writer(true) << tr("You can use the following legacy seed to restore instead of the wallet's Polyseed if you can't use the latter:\n");
+  }
   // don't log
   if (m_wallet->is_polyseed())
   {
@@ -4956,7 +4980,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   if (!two_random)
   {
-    print_seed(electrum_words, "");
+    print_seed(electrum_words, "", false);
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -5188,7 +5212,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
         // Display the seed
         epee::wipeable_string seed;
         m_wallet->get_seed(seed);
-        print_seed(seed, "");
+        print_seed(seed, "", false);
       }
       else
       {
@@ -9942,6 +9966,7 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
   message_writer() << tr("Network type: ") << (
     m_wallet->nettype() == cryptonote::TESTNET ? tr("Testnet") :
     m_wallet->nettype() == cryptonote::STAGENET ? tr("Stagenet") : tr("Mainnet"));
+  message_writer() << tr("Seed type: ") << (m_wallet->is_polyseed() ? tr("Polyseed") : tr("Legacy"));
   return true;
 }
 //----------------------------------------------------------------------------------------------------
