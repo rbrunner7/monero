@@ -891,6 +891,11 @@ bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
     fail_msg_writer() << tr("wallet does not have a Polyseed");
     return true;
   }
+  if (encrypted && m_wallet->is_polyseed())
+  {
+    fail_msg_writer() << tr("wallet has a Polyseed which can't get encrypted this way");
+    return true;
+  }
 
   SCOPED_WALLET_UNLOCK();
 
@@ -901,6 +906,8 @@ bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
   }
 
   epee::wipeable_string seed_pass;
+  uint64_t birthday = 0;
+  bool is_encrypted;
   if (encrypted)
   {
     auto pwd_container = password_prompter(tr("Enter optional seed offset passphrase, empty to see raw seed"), true);
@@ -917,11 +924,13 @@ bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
     {
       if (as_legacy_seed)
       {
-        success = m_wallet->get_seed(seed, "");
+        // We may have a Polyseed in a language that legacy seeds don't support, or have a different name
+        // for, thus always give out a "legacy seed" in English to avoid any problems
+        success = m_wallet->get_seed(seed, "", true);
       }
       else
       {
-        success = m_wallet->get_polyseed(seed, seed_pass);
+        success = m_wallet->get_polyseed(seed, seed_pass, birthday, is_encrypted);
       }
     }
     else
@@ -932,7 +941,7 @@ bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
 
   if (success) 
   {
-    print_seed(seed, seed_pass, as_legacy_seed);
+    print_seed(seed, seed_pass, as_legacy_seed, birthday, is_encrypted);
   }
   else
   {
@@ -3978,7 +3987,7 @@ bool simple_wallet::ask_wallet_create_if_needed()
  * \brief Prints the seed with a nice message
  * \param seed seed to print
  */
-void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed)
+void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed, uint64_t birthday, bool is_encrypted)
 {
   std::string seed_type;
   if (m_wallet->get_multisig_status().multisig_is_active)
@@ -3998,15 +4007,23 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
     "your email or on file storage services outside of your immediate control.\n")) % seed_type;
   if (as_legacy_seed)
   {
-    success_msg_writer(true) << tr("You can use the following legacy seed to restore instead of the wallet's Polyseed if you can't use the latter:\n");
+    success_msg_writer(true) << tr("Use the following English legacy seed, without any seed offset, to restore if you can't use the wallet's original Polyseed:\n");
   }
   // don't log
   if (m_wallet->is_polyseed())
   {
-    std::cout << seed.data() << std::endl;
+    std::cout << seed.data() << std::endl << std::endl;
     if (!seed_pass.empty())
     {
-      std::cout << std::endl << tr("Seed offset passphrase: ") << seed_pass.data() << std::endl;
+      std::cout << tr("Seed offset passphrase: ") << seed_pass.data() << std::endl;
+      if (is_encrypted)
+      {
+        std::cout << tr("Polyseed is encrypted using this passphrase") << std::endl;
+      }
+    }
+    if (birthday != 0)
+    {
+      std::cout << tr("Polyseed birthday: ") << tools::get_human_readable_timestamp(birthday) << std::endl;
     }
   }
   else
@@ -4980,7 +4997,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   if (!two_random)
   {
-    print_seed(electrum_words, "", false);
+    print_seed(electrum_words, "", false, 0, false);
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -5212,7 +5229,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
         // Display the seed
         epee::wipeable_string seed;
         m_wallet->get_seed(seed);
-        print_seed(seed, "", false);
+        print_seed(seed, "", false, 0, false);
       }
       else
       {
@@ -9966,7 +9983,15 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
   message_writer() << tr("Network type: ") << (
     m_wallet->nettype() == cryptonote::TESTNET ? tr("Testnet") :
     m_wallet->nettype() == cryptonote::STAGENET ? tr("Stagenet") : tr("Mainnet"));
-  message_writer() << tr("Seed type: ") << (m_wallet->is_polyseed() ? tr("Polyseed") : tr("Legacy"));
+  if (m_wallet->is_polyseed())
+  {
+    type = tr("Polyseed");
+  }
+  else
+  {
+    type = tr("Legacy");
+  }
+  message_writer() << tr("Seed type: ") << type;
   return true;
 }
 //----------------------------------------------------------------------------------------------------

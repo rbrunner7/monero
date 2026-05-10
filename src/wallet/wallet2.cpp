@@ -1423,7 +1423,7 @@ bool wallet2::is_deterministic() const
   return memcmp(second.data,get_account().get_keys().m_view_secret_key.data, sizeof(crypto::secret_key)) == 0;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeable_string &passphrase) const
+bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeable_string &passphrase, bool force_english) const
 {
   bool keys_deterministic = is_deterministic();
   if (!keys_deterministic)
@@ -1431,25 +1431,34 @@ bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeab
     std::cout << "This is not a deterministic wallet" << std::endl;
     return false;
   }
-  if (seed_language.empty())
+  std::string seed_language_to_use;
+  if (force_english)
+  {
+    seed_language_to_use = "English";
+  }
+  else if (seed_language.empty())
   {
     std::cout << "seed_language not set" << std::endl;
     return false;
+  }
+  else
+  {
+    seed_language_to_use = seed_language;
   }
 
   crypto::secret_key key = get_account().get_keys().m_spend_secret_key;
   if (!passphrase.empty())
     key = cryptonote::encrypt_key(key, passphrase);
-  if (!crypto::ElectrumWords::bytes_to_words(key, electrum_words, seed_language))
+  if (!crypto::ElectrumWords::bytes_to_words(key, electrum_words, seed_language_to_use))
   {
-    std::cout << "Failed to create seed from key for language: " << seed_language << std::endl;
+    std::cout << "Failed to create seed from key for language: " << seed_language_to_use << std::endl;
     return false;
   }
 
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_string& passphrase) const
+bool wallet2::get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_string& passphrase, uint64_t& birthday, bool& is_encrypted) const
 {
   if (!m_polyseed)
   {
@@ -1460,6 +1469,8 @@ bool wallet2::get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_strin
   data.load(get_account().get_keys().m_polyseed);
   data.encode(polyseed::get_lang_by_name(seed_language), polyseed);
   passphrase = get_account().get_keys().m_passphrase;
+  birthday = data.birthday();
+  is_encrypted = data.encrypted();
   return true;
 }
 //----------------------------------------------------------------------------------------------------

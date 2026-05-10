@@ -304,7 +304,7 @@ namespace cryptonote
      * \brief Prints the seed with a nice message
      * \param seed seed to print
      */
-    void print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed);
+    void print_seed(const epee::wipeable_string &seed, const epee::wipeable_string &seed_pass, bool as_legacy_seed, uint64_t birthday, bool is_encrypted);
 
     /*!
      * \brief Gets the word seed language from the user.

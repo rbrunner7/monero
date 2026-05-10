@@ -379,7 +379,9 @@ namespace crypto
 
       try
       {
-        polyseed_language = polyseed.decode(words.data());
+        epee::wipeable_string zero_terminated_words(words);
+        zero_terminated_words.push_back('\0');
+        polyseed_language = polyseed.decode(zero_terminated_words.data());
         is_polyseed = true;
       }
       catch (const std::exception &e)
