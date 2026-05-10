@@ -4000,10 +4000,10 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
   }
   else
   {
-    seed_type = tr("25 words");
+    seed_type = tr("25 word legacy seed");
   }
-  success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
-    "Write them down and store them somewhere safe and secure. Please do not store them in "
+  success_msg_writer(true) << "\n" << boost::format(tr("NOTE: The following %s can be used to recover access to your wallet. "
+    "Write this info down and store it somewhere safe and secure. Please do not store it in "
     "your email or on file storage services outside of your immediate control.\n")) % seed_type;
   if (as_legacy_seed)
   {
@@ -4018,7 +4018,7 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
       std::cout << tr("Seed offset passphrase: ") << seed_pass.data() << std::endl;
       if (is_encrypted)
       {
-        std::cout << tr("Polyseed is encrypted using this passphrase") << std::endl;
+        std::cout << tr("Polyseed is ENCRYPTED using this passphrase") << std::endl;
       }
     }
     if (birthday != 0)

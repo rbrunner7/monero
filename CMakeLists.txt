@@ -1185,4 +1185,4 @@ if(BUILD_DOCUMENTATION)
 endif()
 
 # when ON - will install libwallet_merged into "lib"
-option(BUILD_GUI_DEPS "Build GUI dependencies." OFF)
+option(BUILD_GUI_DEPS "Build GUI dependencies." ON)
