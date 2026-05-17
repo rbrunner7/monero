@@ -169,6 +169,12 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_keys.m_spend_secret_key = spend_secret_key;
   }
   //-----------------------------------------------------------------
+  void account_base::set_polyseed(const crypto::secret_key& polyseed, const epee::wipeable_string& passphrase)
+  {
+    m_keys.m_polyseed = polyseed;
+    m_keys.m_passphrase = passphrase;
+  }
+  //-----------------------------------------------------------------
   crypto::secret_key account_base::generate(const crypto::secret_key& recovery_key, bool recover, bool two_random)
   {
     crypto::secret_key first = generate_keys(m_keys.m_account_address.m_spend_public_key, m_keys.m_spend_secret_key, recovery_key, recover);

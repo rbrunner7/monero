@@ -843,7 +843,9 @@ bool WalletImpl::getPolyseed(std::string &seed_words, std::string &passphrase) c
     return false;
   }
 
-  bool result = m_wallet->get_polyseed(seed_words_epee, passphrase_epee);
+  uint64_t birthday;
+  bool is_encrypted;
+  bool result = m_wallet->get_polyseed(seed_words_epee, passphrase_epee, birthday, is_encrypted);
 
   seed_words.assign(seed_words_epee.data(), seed_words_epee.size());
   passphrase.assign(passphrase_epee.data(), passphrase_epee.size());

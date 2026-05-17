@@ -102,6 +102,7 @@ namespace cryptonote
 
     void forget_spend_key();
     void set_spend_key(const crypto::secret_key& spend_secret_key);
+    void set_polyseed(const crypto::secret_key& polyseed, const epee::wipeable_string& passphrase);
     const std::vector<crypto::secret_key> &get_multisig_keys() const { return m_keys.m_multisig_keys; }
 
     void encrypt_keys(const crypto::chacha_key &key) { m_keys.encrypt(key); }

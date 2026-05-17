@@ -285,9 +285,10 @@ private:
     static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds)
     {
       crypto::secret_key spend_key = crypto::null_skey;
-      return verify_password(keys_file_name, password, no_spend_key, hwdev, kdf_rounds, spend_key);
+      cryptonote::account_keys keys;
+      return verify_password(keys_file_name, password, no_spend_key, hwdev, kdf_rounds, spend_key, keys);
     };
-    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds, crypto::secret_key &spend_key_out);
+    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds, crypto::secret_key &spend_key_out, cryptonote::account_keys &keys_out);
     static bool query_device(hw::device::device_type& device_type, const std::string& keys_file_name, const epee::wipeable_string& password, uint64_t kdf_rounds = 1);
 
     wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_client_factory>(new net::http::client_factory()));
@@ -1069,8 +1070,8 @@ private:
     /*!
      * \brief verifies given password is correct for default wallet keys file
      */
-    bool verify_password(const epee::wipeable_string& password) {crypto::secret_key key = crypto::null_skey; return verify_password(password, key);};
-    bool verify_password(const epee::wipeable_string& password, crypto::secret_key &spend_key_out);
+    bool verify_password(const epee::wipeable_string& password) {crypto::secret_key spend_key = crypto::null_skey; cryptonote::account_keys keys; return verify_password(password, spend_key, keys);};
+    bool verify_password(const epee::wipeable_string& password, crypto::secret_key &spend_key_out, cryptonote::account_keys &keys_out);
     cryptonote::account_base& get_account(){return m_account;}
     const cryptonote::account_base& get_account()const{return m_account;}
 
