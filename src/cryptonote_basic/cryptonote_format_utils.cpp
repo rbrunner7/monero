@@ -1670,4 +1670,29 @@ namespace cryptonote
     sc_sub((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
     return key;
   }
+  //---------------------------------------------------------------
+  crypto::secret_key polyseed_keygen(const polyseed::data& seed, const epee::wipeable_string &passphrase)
+  {
+    bool is_encrypted = seed.encrypted();
+    bool has_passphrase = !passphrase.empty();
+
+    polyseed_storage storage;
+    seed.save(storage);
+    polyseed::data seed_copy(POLYSEED_MONERO);
+    seed_copy.load(storage);
+
+    if (is_encrypted) {
+      if (!has_passphrase) {
+          throw std::runtime_error("encrypted polyseed needs a passphrase");
+      }
+      seed_copy.crypt(passphrase.data());
+    }
+    crypto::secret_key secret_key;
+    seed_copy.keygen(&secret_key, sizeof(secret_key));
+
+    if (!is_encrypted && has_passphrase) {
+      secret_key = decrypt_key(secret_key, passphrase);
+    }
+    return secret_key;
+  }
 }
