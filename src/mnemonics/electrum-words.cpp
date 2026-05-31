@@ -491,9 +491,9 @@ namespace crypto
      * \brief Gets a list of seed languages that are supported.
      * \param languages The vector is set to the list of languages.
      */
-    void get_language_list(std::vector<std::string> &languages, bool english, bool for_polyseed)
+    void get_language_list(std::vector<std::string> &languages, bool english, bool polyseed)
     {
-      if (for_polyseed)
+      if (polyseed)
       {
         const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
         for (auto polyseed_language: polyseed_languages)
@@ -524,25 +524,52 @@ namespace crypto
       return word_list.size() != (seed_length + 1);
     }
 
-    std::string get_english_name_for(const std::string &name)
+    std::string get_english_name_for(const std::string &name, bool polyseed)
     {
-      const std::vector<const Language::Base*> language_instances = get_language_list();
-      for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin();
-        it != language_instances.end(); it++)
+      if (polyseed)
       {
-        if ((*it)->get_language_name() == name)
-          return (*it)->get_english_language_name();
+        const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
+        for (auto polyseed_language: polyseed_languages)
+        {
+          if (polyseed_language.name() == name)
+          {
+            return polyseed_language.name_en();
+          }
+        }
+      }
+      else
+      {
+        const std::vector<const Language::Base*> language_instances = get_language_list();
+        for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin();
+          it != language_instances.end(); it++)
+        {
+          if ((*it)->get_language_name() == name)
+            return (*it)->get_english_language_name();
+        }
       }
       return "<language not found>";
     }
 
-    bool is_valid_language(const std::string &language)
+    bool is_valid_language(const std::string &language, bool polyseed)
     {
-      const std::vector<const Language::Base*> language_instances = get_language_list();
-      for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin(); it != language_instances.end(); it++)
-        if ((*it)->get_english_language_name() == language || (*it)->get_language_name() == language)
-          return true;
-      return false;
+      if (polyseed)
+      {
+        const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
+        for (auto polyseed_language: polyseed_languages)
+        {
+          if (polyseed_language.name_en() == language || polyseed_language.name() == language)
+            return true;
+        }
+        return false;
+      }
+      else
+      {
+        const std::vector<const Language::Base*> language_instances = get_language_list();
+        for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin(); it != language_instances.end(); it++)
+          if ((*it)->get_english_language_name() == language || (*it)->get_language_name() == language)
+            return true;
+        return false;
+      }
     }
   }
 

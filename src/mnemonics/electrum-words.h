@@ -112,9 +112,9 @@ namespace crypto
      * \brief Gets a list of seed languages that are supported.
      * \param languages A vector is set to the list of languages.
      * \param english whether to get the names in English or the language language
-     * \param for_polyseed whether to get the list of Polyseed languages or languages for legacy seeds
+     * \param polyseed whether to get the list of Polyseed languages or languages for legacy seeds
      */
-    void get_language_list(std::vector<std::string> &languages, bool english = false, bool for_polyseed = true);
+    void get_language_list(std::vector<std::string> &languages, bool english = false, bool polyseed = true);
 
     /*!
      * \brief Tells if the seed passed is an old style seed or not.
@@ -128,9 +128,9 @@ namespace crypto
      * \param  name the name of the language in its own language
      * \return      the name of the language in English
      */
-    std::string get_english_name_for(const std::string &name);
+    std::string get_english_name_for(const std::string &name, bool polyseed = true);
 
-    bool is_valid_language(const std::string &language);
+    bool is_valid_language(const std::string &language, bool polyseed = true);
   }
 }
 

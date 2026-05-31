@@ -2163,10 +2163,10 @@ namespace wallet_rpc
   {
     struct request_t
     {
-      bool for_polyseed;
+      bool polyseed;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_OPT(for_polyseed, true)
+        KV_SERIALIZE_OPT(polyseed, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -2191,11 +2191,13 @@ namespace wallet_rpc
       std::string filename;
       std::string password;
       std::string language;
+      bool polyseed;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(filename)
         KV_SERIALIZE(password)
         KV_SERIALIZE(language)
+        KV_SERIALIZE_OPT(polyseed, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

@@ -3543,8 +3543,8 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_get_languages(const wallet_rpc::COMMAND_RPC_GET_LANGUAGES::request& req, wallet_rpc::COMMAND_RPC_GET_LANGUAGES::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
-    crypto::ElectrumWords::get_language_list(res.languages, true, req.for_polyseed);
-    crypto::ElectrumWords::get_language_list(res.languages_local, false, req.for_polyseed);
+    crypto::ElectrumWords::get_language_list(res.languages, true, req.polyseed);
+    crypto::ElectrumWords::get_language_list(res.languages_local, false, req.polyseed);
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -3580,7 +3580,7 @@ namespace tools
     }
     std::string wallet_file = req.filename.empty() ? "" : (m_wallet_dir + "/" + req.filename);
     {
-      if (!crypto::ElectrumWords::is_valid_language(req.language))
+      if (!crypto::ElectrumWords::is_valid_language(req.language, req.polyseed))
       {
         er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
         er.message = "Unknown language: " + req.language;
@@ -3608,15 +3608,27 @@ namespace tools
       return false;
     }
     wal->set_seed_language(req.language);
-    cryptonote::COMMAND_RPC_GET_HEIGHT::request hreq;
-    cryptonote::COMMAND_RPC_GET_HEIGHT::response hres;
-    hres.height = 0;
-    bool r = wal->invoke_http_json("/getheight", hreq, hres);
-    if (r)
-      wal->set_refresh_from_block_height(hres.height);
+    if (!req.polyseed)
+    {
+      cryptonote::COMMAND_RPC_GET_HEIGHT::request hreq;
+      cryptonote::COMMAND_RPC_GET_HEIGHT::response hres;
+      hres.height = 0;
+      bool r = wal->invoke_http_json("/getheight", hreq, hres);
+      if (r)
+        wal->set_refresh_from_block_height(hres.height);
+    }
     crypto::secret_key dummy_key;
     try {
-      wal->generate(wallet_file, req.password, dummy_key, false, false);
+      if (req.polyseed)
+      {
+        polyseed::data polyseed(POLYSEED_MONERO);
+        polyseed.create(0);
+        wal->generate(wallet_file, req.password, polyseed);
+      }
+      else
+      {
+        wal->generate(wallet_file, req.password, dummy_key, false, false);
+      }
     }
     catch (const std::exception& e)
     {
@@ -4032,7 +4044,7 @@ namespace tools
 
     if (!req.language.empty())
     {
-      if (!crypto::ElectrumWords::is_valid_language(req.language))
+      if (!crypto::ElectrumWords::is_valid_language(req.language, false))
       {
         er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
         er.message = "The specified seed language is invalid.";
@@ -4199,7 +4211,7 @@ namespace tools
         er.message = "Wallet was using the old seed language. You need to specify a new seed language.";
         return false;
       }
-      if (!crypto::ElectrumWords::is_valid_language(req.language))
+      if (!crypto::ElectrumWords::is_valid_language(req.language, is_polyseed))
       {
         er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
         er.message = "Wallet was using the old seed language, and the specified new seed language is invalid.";

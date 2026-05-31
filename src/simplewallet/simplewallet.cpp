@@ -4819,14 +4819,14 @@ bool simple_wallet::try_connect_to_daemon(bool silent, uint32_t* version)
  * 
  * \return The chosen language.
  */
-std::string simple_wallet::get_mnemonic_language(bool for_polyseed)
+std::string simple_wallet::get_mnemonic_language(bool polyseed)
 {
   std::vector<std::string> language_list_self, language_list_english;
   const std::vector<std::string> &language_list = m_use_english_language_names ? language_list_english : language_list_self;
   std::string language_choice;
   int language_number = -1;
-  crypto::ElectrumWords::get_language_list(language_list_self, false, for_polyseed);
-  crypto::ElectrumWords::get_language_list(language_list_english, true, for_polyseed);
+  crypto::ElectrumWords::get_language_list(language_list_self, false, polyseed);
+  crypto::ElectrumWords::get_language_list(language_list_english, true, polyseed);
   std::cout << tr("List of available languages for your wallet's seed:") << std::endl;
   std::cout << tr("If your display freezes, exit blind with ^C, then run again with --use-english-language-names") << std::endl;
   int ii;
