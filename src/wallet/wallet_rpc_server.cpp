@@ -2411,20 +2411,29 @@ namespace tools
       {
         crypto::secret_key recovery_key;
         std::string language;
+        bool is_polyseed = false;
+        polyseed::data polyseed(POLYSEED_MONERO);
 
-        if (!crypto::ElectrumWords::words_to_bytes(req.seed, recovery_key, language))
+        if (!crypto::ElectrumWords::words_to_bytes_ex(req.seed, recovery_key, language, is_polyseed, polyseed))
         {
           er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
           er.message = "Electrum-style word list failed verification";
           return false;
         }
 
-        if (!req.seed_offset.empty())
+        if (!req.seed_offset.empty() && !is_polyseed)
           recovery_key = cryptonote::decrypt_key(recovery_key, req.seed_offset);
 
         // generate spend key
         cryptonote::account_base account;
-        account.generate(recovery_key, true, false);
+        if (is_polyseed)
+        {
+          account.create_from_polyseed(polyseed, req.seed_offset);
+        }
+        else
+        {
+          account.generate(recovery_key, true, false);
+        }
         spend_secret_key = account.get_keys().m_spend_secret_key;
       }
 

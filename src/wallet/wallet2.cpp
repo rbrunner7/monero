@@ -5771,7 +5771,7 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
 }
 
 /*!
-* \brief Generates a wallet or restores one from a polyseed.
+* \brief Generates a wallet or restores one from a Polyseed.
 * \param wallet_              Name of wallet file
 * \param password             Password of wallet file
 * \param seed                 Polyseed data
