@@ -5771,17 +5771,18 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
 }
 
 /*!
-  * \brief Generates a wallet or restores one from a Polyseed.
-  * @param wallet_              Name of wallet file
-  * @param password             Password of wallet file
-  * @param seed                 Polyseed data
-  * @param passphrase           Optional seed offset passphrase
-  * @param recover              Whether it is a restore
-  * @param restoreHeight        Override the embedded restore height
-  * @param create_address_file  Whether to create an address file
-  */
-void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
-                  const polyseed::data &seed, const epee::wipeable_string& passphrase, bool recover, uint64_t restoreHeight, bool create_address_file)
+* \brief Generates a wallet or restores one from a polyseed.
+* \param wallet_              Name of wallet file
+* \param password             Password of wallet file
+* \param seed                 Polyseed data
+* \param passphrase           Optional seed offset passphrase
+* \param recover              Whether it is a restore
+* \param restoreHeight        Override the embedded restore height
+* \param create_address_file  Whether to create an address file
+* \return                     The secret key of the generated wallet
+*/
+crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
+  const polyseed::data &seed, const epee::wipeable_string& passphrase, bool recover, uint64_t restoreHeight, bool create_address_file)
 {
   clear();
   prepare_file_names(wallet_);
@@ -5810,6 +5811,8 @@ void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& 
 
   if (!wallet_.empty())
     store();
+
+  return m_account.get_keys().m_spend_secret_key;
 }
 
  uint64_t wallet2::estimate_blockchain_height(uint64_t time)

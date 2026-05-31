@@ -384,6 +384,13 @@ namespace crypto
         polyseed_language = polyseed.decode(zero_terminated_words.data());
         is_polyseed = true;
       }
+      catch (const polyseed::error &e)
+      {
+        if (e.status() == POLYSEED_ERR_LANG) {
+          // Probably a Polyseed, because the number of words is ok, but with some error: Don't try as a legacy seed and stop
+          throw e;
+        }
+      }
       catch (const std::exception &e)
       {
       }

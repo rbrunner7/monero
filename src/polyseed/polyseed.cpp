@@ -128,7 +128,7 @@ namespace polyseed {
         "Unsupported seed features",
         "Invalid seed format",
         "Memory allocation failure",
-        "Unicode normalization failed"
+        "Phrase matches more than one language"
     };
 
     static error get_error(polyseed_status status) {

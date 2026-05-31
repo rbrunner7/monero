@@ -4107,10 +4107,12 @@ namespace tools
     }
     crypto::secret_key recovery_key;
     std::string old_language;
+    bool is_polyseed = false;
+    polyseed::data polyseed(POLYSEED_MONERO);
 
     // check the given seed
     if (!req.enable_multisig_experimental) {
-      if (!crypto::ElectrumWords::words_to_bytes(req.seed, recovery_key, old_language))
+      if (!crypto::ElectrumWords::words_to_bytes_ex(req.seed, recovery_key, old_language, is_polyseed, polyseed))
       {
         er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
         er.message = "Electrum-style word list failed verification";
@@ -4139,7 +4141,7 @@ namespace tools
         return false;
       }
 
-      if (!req.seed_offset.empty())
+      if (!req.seed_offset.empty() && !is_polyseed)
       {
         recovery_key = cryptonote::decrypt_key(recovery_key, req.seed_offset);
       }
@@ -4218,9 +4220,23 @@ namespace tools
         wal->generate(wallet_file, std::move(rc.second).password(), multisig_data, false);
         wal->enable_multisig(true);
       }
+      else if (is_polyseed)
+      {
+        // Generate normal wallet with Polyseed
+        // Overwrite the restore height from the request if we can get one through the Polyseed birthday
+        uint64_t restore_height = req.restore_height;
+        try
+        {
+          restore_height = wal->get_blockchain_height_by_timestamp(polyseed.birthday());
+        }
+        catch (const std::runtime_error& e)
+        {
+        }
+        recovery_val = wal->generate(wallet_file, std::move(rc.second).password(), polyseed, req.seed_offset, true, restore_height, false);
+      }
       else
       {
-        // Generate normal wallet
+        // Generate normal wallet with legacy seed
         recovery_val = wal->generate(wallet_file, std::move(rc.second).password(), recovery_key, true, false, false);
       }
       MINFO("Wallet has been restored.\n");
@@ -4231,8 +4247,12 @@ namespace tools
       return false;
     }
 
-    // // Convert the secret key back to seed
+    // Convert the secret key back to seed; with Polyseed we give back the English 25 word legacy seed
     epee::wipeable_string electrum_words;
+    if (is_polyseed)
+    {
+      mnemonic_language = "English";
+    }
     if (!req.enable_multisig_experimental && !crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language))
     {
       er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
@@ -4249,15 +4269,18 @@ namespace tools
     }
 
     // set blockheight if given
-    try
+    if (!is_polyseed)
     {
-      wal->set_refresh_from_block_height(req.restore_height);
-      wal->rewrite(wallet_file, password);
-    }
-    catch (const std::exception &e)
-    {
-      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
-      return false;
+      try
+      {
+        wal->set_refresh_from_block_height(req.restore_height);
+        wal->rewrite(wallet_file, password);
+      }
+      catch (const std::exception &e)
+      {
+        handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
+        return false;
+      }
     }
 
     if (m_wallet)

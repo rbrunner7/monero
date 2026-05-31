@@ -924,15 +924,16 @@ private:
 
     /*!
      * \brief Generates a wallet or restores one from a polyseed.
-     * @param wallet_              Name of wallet file
-     * @param password             Password of wallet file
-     * @param seed                 Polyseed data
-     * @param passphrase           Optional seed offset passphrase
-     * @param recover              Whether it is a restore
-     * @param restoreHeight        Override the embedded restore height
-     * @param create_address_file  Whether to create an address file
+     * \param wallet_              Name of wallet file
+     * \param password             Password of wallet file
+     * \param seed                 Polyseed data
+     * \param passphrase           Optional seed offset passphrase
+     * \param recover              Whether it is a restore
+     * \param restoreHeight        Override the embedded restore height
+     * \param create_address_file  Whether to create an address file
+     * \return                     The secret key of the generated wallet
      */
-    void generate(const std::string& wallet_, const epee::wipeable_string& password,
+    crypto::secret_key generate(const std::string& wallet_, const epee::wipeable_string& password,
       const polyseed::data &seed, const epee::wipeable_string& passphrase = "",
       bool recover = false, uint64_t restoreHeight = 0, bool create_address_file = false);
 
