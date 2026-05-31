@@ -3543,8 +3543,8 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_get_languages(const wallet_rpc::COMMAND_RPC_GET_LANGUAGES::request& req, wallet_rpc::COMMAND_RPC_GET_LANGUAGES::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
-    crypto::ElectrumWords::get_language_list(res.languages, true);
-    crypto::ElectrumWords::get_language_list(res.languages_local, false);
+    crypto::ElectrumWords::get_language_list(res.languages, true, req.for_polyseed);
+    crypto::ElectrumWords::get_language_list(res.languages_local, false, req.for_polyseed);
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------

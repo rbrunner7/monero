@@ -491,13 +491,24 @@ namespace crypto
      * \brief Gets a list of seed languages that are supported.
      * \param languages The vector is set to the list of languages.
      */
-    void get_language_list(std::vector<std::string> &languages, bool english)
+    void get_language_list(std::vector<std::string> &languages, bool english, bool for_polyseed)
     {
-      const std::vector<const Language::Base*> language_instances = get_language_list();
-      for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin();
-        it != language_instances.end(); it++)
+      if (for_polyseed)
       {
-        languages.push_back(english ? (*it)->get_english_language_name() : (*it)->get_language_name());
+        const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
+        for (auto polyseed_language: polyseed_languages)
+        {
+          languages.push_back(english ? polyseed_language.name_en() : polyseed_language.name());
+        }
+      }
+      else
+      {
+        const std::vector<const Language::Base*> language_instances = get_language_list();
+        for (std::vector<const Language::Base*>::const_iterator it = language_instances.begin();
+          it != language_instances.end(); it++)
+        {
+          languages.push_back(english ? (*it)->get_english_language_name() : (*it)->get_language_name());
+        }
       }
     }
 

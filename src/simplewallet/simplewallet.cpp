@@ -4825,20 +4825,8 @@ std::string simple_wallet::get_mnemonic_language(bool for_polyseed)
   const std::vector<std::string> &language_list = m_use_english_language_names ? language_list_english : language_list_self;
   std::string language_choice;
   int language_number = -1;
-  if (for_polyseed)
-  {
-    const std::vector<polyseed::language>& polyseed_languages = polyseed::get_langs();
-    for (auto polyseed_language: polyseed_languages)
-    {
-      language_list_self.push_back(polyseed_language.name());
-      language_list_english.push_back(polyseed_language.name_en());
-    }
-  }
-  else
-  {
-    crypto::ElectrumWords::get_language_list(language_list_self, false);
-    crypto::ElectrumWords::get_language_list(language_list_english, true);
-  }
+  crypto::ElectrumWords::get_language_list(language_list_self, false, for_polyseed);
+  crypto::ElectrumWords::get_language_list(language_list_english, true, for_polyseed);
   std::cout << tr("List of available languages for your wallet's seed:") << std::endl;
   std::cout << tr("If your display freezes, exit blind with ^C, then run again with --use-english-language-names") << std::endl;
   int ii;
