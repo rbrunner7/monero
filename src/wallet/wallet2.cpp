@@ -1438,7 +1438,7 @@ bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeab
   }
   else if (seed_language.empty())
   {
-    // Don't refuse getting anymore as it was done for a decade, but also default to English;
+    // Don't refuse query anymore as it was done for a decade, but also default to English;
     // There are important third-party wallet apps around that don't set the seed language
     // under some circumstances
     seed_language_to_use = "English";

@@ -1685,7 +1685,9 @@ namespace cryptonote
       if (!has_passphrase) {
           throw std::runtime_error("encrypted polyseed needs a passphrase");
       }
-      seed_copy.crypt(passphrase.data());
+      epee::wipeable_string zero_terminated_passphrase(passphrase);
+      zero_terminated_passphrase.push_back('\0');
+      seed_copy.crypt(zero_terminated_passphrase.data());
     }
     crypto::secret_key secret_key;
     seed_copy.keygen(&secret_key, sizeof(secret_key));

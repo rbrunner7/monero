@@ -1136,9 +1136,11 @@ namespace wallet_rpc
     struct response_t
     {
       std::string key;
+      std::string seed_offset;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key)
+        KV_SERIALIZE(seed_offset)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

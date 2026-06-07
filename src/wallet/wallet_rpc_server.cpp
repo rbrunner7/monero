@@ -2282,6 +2282,9 @@ namespace tools
       if (req.key_type.compare("mnemonic") == 0)
       {
         epee::wipeable_string seed;
+        epee::wipeable_string seed_offset;
+        uint64_t birthday = 0;
+        bool is_encrypted;
         const multisig::multisig_account_status ms_status{m_wallet->get_multisig_status()};
 
         if (ms_status.multisig_is_active)
@@ -2314,7 +2317,20 @@ namespace tools
             er.message = "The wallet is non-deterministic. Cannot display seed.";
             return false;
           }
-          if (!m_wallet->get_seed(seed))
+          bool got_seed;
+          if (m_wallet->is_polyseed())
+          {
+            got_seed = m_wallet->get_polyseed(seed, seed_offset, birthday, is_encrypted);
+            if (got_seed)
+            {
+              res.seed_offset = std::string(seed_offset.data(), seed_offset.size());
+            }
+          }
+          else
+          {
+            got_seed = m_wallet->get_seed(seed);
+          }
+          if (!got_seed)
           {
             er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
             er.message = "Failed to get seed.";
