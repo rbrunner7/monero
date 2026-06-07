@@ -1117,6 +1117,7 @@ private:
      */
     bool is_deterministic() const;
     bool is_polyseed() const { return m_polyseed; }
+    void set_is_polyseed(bool is_polyseed) { m_polyseed = is_polyseed; }
     bool get_seed(epee::wipeable_string& electrum_words, const epee::wipeable_string &passphrase = epee::wipeable_string(), bool force_english = false) const;
     bool get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_string& passphrase, uint64_t& birthday, bool& is_encrypted) const;
 

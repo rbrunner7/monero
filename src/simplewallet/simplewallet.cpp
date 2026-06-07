@@ -885,15 +885,20 @@ bool simple_wallet::print_seed(bool encrypted, bool as_legacy_seed)
       fail_msg_writer() << tr("wallet is multisig but not yet finalized");
       return true;
     }
+    if (as_legacy_seed)
+    {
+      fail_msg_writer() << tr("wallet is multisig and thus has no legacy seed");
+      return true;
+    }
   }
   if (as_legacy_seed && !m_wallet->is_polyseed())
   {
-    fail_msg_writer() << tr("wallet does not have a Polyseed");
+    fail_msg_writer() << tr("legacy seed display only possible for wallet with Polyseed");
     return true;
   }
   if (encrypted && m_wallet->is_polyseed())
   {
-    fail_msg_writer() << tr("wallet has a Polyseed which can't get encrypted this way");
+    fail_msg_writer() << tr("wallet has a Polyseed which can't get encrypted using this command");
     return true;
   }
 
@@ -5226,7 +5231,35 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
         m_wallet->rewrite(m_wallet_file, password);
       }
     }
+
+    if (!m_wallet->is_polyseed())
+    {
+      std::string seed;
+      std::string passphrase;
+      bool has_feather_polyseed = m_wallet->get_attribute("feather.seed", seed);
+      m_wallet->get_attribute("feather.seedoffset", passphrase);
+      if (has_feather_polyseed)
+      {
+        // As yet unmodified wallet file written by Feather Wallet app: Switch to Polyseed "in our way";
+        // file stays compatible with Feather
+        polyseed::data polyseed(POLYSEED_MONERO);
+        polyseed::language lang = polyseed.decode(seed.data());
+        m_wallet->set_seed_language(lang.name());
+        crypto::secret_key polyseed_storage;
+        polyseed.save(&polyseed_storage);
+        {
+          tools::wallet_keys_unlocker unlocker(*m_wallet, &password);
+          m_wallet->get_account().set_polyseed(polyseed_storage, passphrase);
+        }
+        m_wallet->set_is_polyseed(true);
+        m_wallet->rewrite(m_wallet_file, password);
+
+        memwipe(seed.data(), seed.size());
+        memwipe(passphrase.data(), passphrase.size());
+      }
+    }
   }
+
   catch (const std::exception& e)
   {
     fail_msg_writer() << tr("failed to load wallet: ") << e.what();
@@ -9971,7 +10004,11 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
   message_writer() << tr("Network type: ") << (
     m_wallet->nettype() == cryptonote::TESTNET ? tr("Testnet") :
     m_wallet->nettype() == cryptonote::STAGENET ? tr("Stagenet") : tr("Mainnet"));
-  if (m_wallet->is_polyseed())
+  if (ms_status.multisig_is_active)
+  {
+    type = tr("Multisig");
+  }
+  else if (m_wallet->is_polyseed())
   {
     type = tr("Polyseed");
   }

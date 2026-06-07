@@ -171,6 +171,8 @@ DISABLE_VS_WARNINGS(4244 4345)
   //-----------------------------------------------------------------
   void account_base::set_polyseed(const crypto::secret_key& polyseed, const epee::wipeable_string& passphrase)
   {
+    // Note that 'm_polyseed'  is not a true 'crypto::secret_key'; it's only declared here that way for
+    // simple handling, but it's a "stored" Polyseed in the sense of 'polyseed_storage'
     m_keys.m_polyseed = polyseed;
     m_keys.m_passphrase = passphrase;
   }

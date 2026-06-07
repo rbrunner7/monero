@@ -1438,8 +1438,10 @@ bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeab
   }
   else if (seed_language.empty())
   {
-    std::cout << "seed_language not set" << std::endl;
-    return false;
+    // Don't refuse getting anymore as it was done for a decade, but also default to English;
+    // There are important third-party wallet apps around that don't set the seed language
+    // under some circumstances
+    seed_language_to_use = "English";
   }
   else
   {
@@ -1469,7 +1471,16 @@ bool wallet2::get_polyseed(epee::wipeable_string& polyseed, epee::wipeable_strin
   {
     polyseed::data data(POLYSEED_MONERO);
     data.load(get_account().get_keys().m_polyseed);
-    data.encode(polyseed::get_lang_by_name(seed_language), polyseed);
+    std::string seed_language_to_use;
+    if (seed_language.empty())
+    {
+      seed_language_to_use = "English";
+    }
+    else
+    {
+      seed_language_to_use = seed_language;
+    }
+    data.encode(polyseed::get_lang_by_name(seed_language_to_use), polyseed);
     passphrase = get_account().get_keys().m_passphrase;
     birthday = data.birthday();
     is_encrypted = data.encrypted();
