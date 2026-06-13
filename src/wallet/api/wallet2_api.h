@@ -699,7 +699,7 @@ struct Wallet
     static void warning(const std::string &category, const std::string &str);
     static void error(const std::string &category, const std::string &str);
 
-    virtual bool getPolyseed(std::string &seed, std::string &passphrase) const = 0;
+    virtual bool getPolyseed(std::string &seed, std::string &passphrase, uint64_t& birthday, bool& is_encrypted) const = 0;
     static bool createPolyseed(std::string &seed_words, std::string &err, const std::string &language = "English");
     static std::vector<std::pair<std::string, std::string>> getPolyseedLanguages();
 

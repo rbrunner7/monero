@@ -713,7 +713,7 @@ bool WalletImpl::createFromPolyseed(const std::string &path, const std::string &
     try {
         auto lang = polyseed.decode(seed.data());
         m_wallet->set_seed_language(lang.name());
-        m_wallet->generate(path, password, polyseed, passphrase, !newWallet);
+        m_wallet->generate(path, password, polyseed, passphrase, !newWallet, restoreHeight);
     }
     catch (const std::exception &e) {
         setStatusError(e.what());
@@ -833,7 +833,7 @@ std::string WalletImpl::seed(const std::string& seed_offset) const
     return std::string(seed.data(), seed.size()); // TODO
 }
 
-bool WalletImpl::getPolyseed(std::string &seed_words, std::string &passphrase) const
+bool WalletImpl::getPolyseed(std::string &seed_words, std::string &passphrase, uint64_t& birthday, bool& is_encrypted) const
 {
   epee::wipeable_string seed_words_epee(seed_words.c_str(), seed_words.size());
   epee::wipeable_string passphrase_epee(passphrase.c_str(), passphrase.size());
@@ -843,8 +843,6 @@ bool WalletImpl::getPolyseed(std::string &seed_words, std::string &passphrase) c
     return false;
   }
 
-  uint64_t birthday;
-  bool is_encrypted;
   bool result = m_wallet->get_polyseed(seed_words_epee, passphrase_epee, birthday, is_encrypted);
 
   seed_words.assign(seed_words_epee.data(), seed_words_epee.size());

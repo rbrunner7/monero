@@ -89,7 +89,7 @@ public:
     Device getDeviceType() const override;
     bool close(bool store = true);
     std::string seed(const std::string& seed_offset = "") const override;
-    bool getPolyseed(std::string &seed_words, std::string &passphrase) const override;
+    bool getPolyseed(std::string &seed_words, std::string &passphrase, uint64_t& birthday, bool& is_encrypted) const override;
     std::string getSeedLanguage() const override;
     void setSeedLanguage(const std::string &arg) override;
     // void setListener(Listener *) {}

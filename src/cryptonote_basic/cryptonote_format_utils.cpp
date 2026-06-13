@@ -1671,6 +1671,24 @@ namespace cryptonote
     return key;
   }
   //---------------------------------------------------------------
+  // Generate a key to serve as the spend secret key, given Polyseed data and an optional passphrase / seed offset;
+  //
+  // We use the following restore strategy regarding passphrase: If the seed is encrypted in the sense of the
+  // Polyseed 'Encrypted' feature bit, we take the passphrase to be the password / decryption key and decrypt.
+  // If the Polyseed is not encrypted, we use the passphrase to do the usual "seed offsetting" as we do it
+  // already for a long time in the core software with secret keys defined through 25 word legacy seeds.
+  //
+  // Although strictly speaking seed offsetting is not part of the Polyseed spec, various third-party wallet
+  // apps do it already in this way for quite some time, and there are zero technical problems with it,
+  // thus we follow this as some sort of "de facto standard".
+  //
+  // We support encrypted Polyseeds here because an important third-party wallet app does NOT do seed
+  // offsetting if the user specifies a passphrase at new wallet creation, but encrypts the seed with it,
+  // and we want to be able to restore wallets from those seeds. However, we don't ever produce encrypted
+  // Polyseeds ourselves in the Monero core code and always offset the seed with any giving passphrase.
+  //
+  // Said third-party wallet app uses, as far as RESTORING from Polyseed with optional passphrase is
+  // concerned, exactly the same strategy as implemented here.
   crypto::secret_key polyseed_keygen(const polyseed::data& seed, const epee::wipeable_string &passphrase)
   {
     bool is_encrypted = seed.encrypted();
