@@ -4017,10 +4017,14 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
   // don't log
   if (m_wallet->is_polyseed())
   {
-    std::cout << seed.data() << std::endl << std::endl;
+    epee::wipeable_string zero_terminated_seed(seed);
+    zero_terminated_seed.push_back('\0');
+    std::cout << zero_terminated_seed.data() << std::endl << std::endl;
     if (!seed_pass.empty())
     {
-      std::cout << tr("Seed offset passphrase: ") << seed_pass.data() << std::endl;
+      epee::wipeable_string zero_terminated_seed_pass(seed_pass);
+      zero_terminated_seed_pass.push_back('\0');
+      std::cout << tr("Seed offset passphrase: ") << zero_terminated_seed_pass.data() << std::endl;
       if (is_encrypted)
       {
         std::cout << tr("Polyseed is ENCRYPTED using this passphrase") << std::endl;
