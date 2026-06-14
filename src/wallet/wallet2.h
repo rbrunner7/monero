@@ -633,7 +633,7 @@ private:
       bool two_random = false, bool create_address_file = false);
 
     /*!
-     * \brief Generates a wallet or restores one from a polyseed.
+     * \brief Generates a wallet or restores one from a Polyseed.
      * \param wallet_              Name of wallet file
      * \param password             Password of wallet file
      * \param seed                 Polyseed data
