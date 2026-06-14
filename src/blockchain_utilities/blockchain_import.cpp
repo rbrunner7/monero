@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2026, The Monero Project
 //
 // All rights reserved.
 //
@@ -100,11 +100,10 @@ int pop_blocks(cryptonote::core& core, int num_blocks)
 
   int quit = 0;
   block popped_block;
-  std::vector<transaction> popped_txs;
   for (int i=0; i < num_blocks; ++i)
   {
     // simple_core.m_storage.pop_block_from_blockchain() is private, so call directly through db
-    core.get_blockchain_storage().get_db().pop_block(popped_block, popped_txs);
+    core.get_blockchain_storage().get_db().pop_block(popped_block, /*txs=*/nullptr);
     quit = 1;
   }
 
@@ -667,13 +666,6 @@ int main(int argc, char* argv[])
     }
   }
 
-  opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  opt_stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
-  if (opt_testnet && opt_stagenet)
-  {
-    std::cerr << "Error: Can't specify more than one of --testnet and --stagenet" << ENDL;
-    return 1;
-  }
   m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
 
   mlog_configure(mlog_get_default_log_path("monero-blockchain-import.log"), true);

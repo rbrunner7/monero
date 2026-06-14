@@ -88,7 +88,7 @@ struct PendingTransaction
     virtual uint64_t fee() const = 0;
     virtual std::vector<std::string> txid() const = 0;
     /*!
-     * \brief txCount - number of transactions current transaction will be splitted to
+     * \brief txCount - number of transactions current transaction will be split into
      * \return
      */
     virtual uint64_t txCount() const = 0;
@@ -143,7 +143,7 @@ struct UnsignedTransaction
     virtual std::vector<std::string> recipientAddress() const = 0;
     virtual uint64_t minMixinCount() const = 0;
     /*!
-     * \brief txCount - number of transactions current transaction will be splitted to
+     * \brief txCount - number of transactions current transaction will be split into
      * \return
      */
     virtual uint64_t txCount() const = 0;
@@ -368,7 +368,7 @@ struct WalletListener
     virtual void newBlock(uint64_t height) = 0;
 
     /**
-     * @brief updated  - generic callback, called when any event (sent/received/block reveived/etc) happened with the wallet;
+     * @brief updated  - generic callback, called when any event (sent/received/block received/etc) happened with the wallet;
      */
     virtual void updated() = 0;
 
@@ -586,8 +586,8 @@ struct Wallet
     /*!
      * \brief setSubaddressLookahead - set size of subaddress lookahead
      *
-     * \param major - size fot the major index
-     * \param minor - size fot the minor index
+     * \param major - size for the major index
+     * \param minor - size for the minor index
      */
     virtual void setSubaddressLookahead(uint32_t major, uint32_t minor) = 0;
 
@@ -815,7 +815,7 @@ struct Wallet
     virtual std::string getMultisigKeyExchangeBooster(const std::vector<std::string> &info, const uint32_t threshold, const uint32_t num_signers) = 0;
     /**
      * @brief exportMultisigImages - exports transfers' key images
-     * @param images - output paramter for hex encoded array of images
+     * @param images - output parameter for hex encoded array of images
      * @return true if success
      */
     virtual bool exportMultisigImages(std::string& images) = 0;
@@ -1086,15 +1086,6 @@ struct Wallet
     */
     virtual void setOffline(bool offline) = 0;
     virtual bool isOffline() const = 0;
-    
-    //! blackballs a set of outputs
-    virtual bool blackballOutputs(const std::vector<std::string> &outputs, bool add) = 0;
-
-    //! blackballs an output
-    virtual bool blackballOutput(const std::string &amount, const std::string &offset) = 0;
-
-    //! unblackballs an output
-    virtual bool unblackballOutput(const std::string &amount, const std::string &offset) = 0;
 
     //! gets the ring used for a key image, if any
     virtual bool getRing(const std::string &key_image, std::vector<uint64_t> &ring) const = 0;

@@ -77,7 +77,7 @@ namespace epee
       m_net_server.get_config_object().m_phandler = static_cast<t_child_class*>(this);
       m_net_server.get_config_object().rng = std::move(rng);
 
-      //here set folder for hosting reqests
+      //here set folder for hosting requests
       m_net_server.get_config_object().m_folder = "";
 
       //set access control allow origins if configured
@@ -108,7 +108,7 @@ namespace epee
     bool run(size_t threads_count, bool wait = true)
     {
       //go to loop
-      MINFO("Run net_service loop( " << threads_count << " threads)...");
+      MINFO("Run net_service loop (" << threads_count << " threads)...");
       if(!m_net_server.run_server(threads_count, wait))
       {
         LOG_ERROR("Failed to run net tcp server!");

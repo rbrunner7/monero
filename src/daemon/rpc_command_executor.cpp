@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2026, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -37,7 +37,6 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
-#include "rpc/rpc_payment_signature.h"
 #include "rpc/rpc_version_str.h"
 #include <boost/format.hpp>
 #include <ctime>
@@ -1006,23 +1005,20 @@ bool t_rpc_command_executor::print_transaction(crypto::hash transaction_hash,
     }
   }
 
-  if (1 == res.txs.size() || 1 == res.txs_as_hex.size())
+  if (1 == res.txs.size())
   {
-    if (1 == res.txs.size())
-    {
-      // only available for new style answers
-      static const std::string empty_hash = epee::string_tools::pod_to_hex(crypto::cn_fast_hash("", 0));
-      // prunable_hash will equal empty_hash when nothing is prunable (mostly when the transaction is coinbase)
-      bool pruned = res.txs.front().prunable_as_hex.empty() && res.txs.front().prunable_hash != epee::string_tools::pod_to_hex(crypto::null_hash) && res.txs.front().prunable_hash != empty_hash;
-      if (res.txs.front().in_pool)
-        tools::success_msg_writer() << "Found in pool";
-      else
-        tools::success_msg_writer() << "Found in blockchain at height " << res.txs.front().block_height << (pruned ? " (pruned)" : "");
-    }
+    // only available for new style answers
+    static const std::string empty_hash = epee::string_tools::pod_to_hex(crypto::cn_fast_hash("", 0));
+    // prunable_hash will equal empty_hash when nothing is prunable (mostly when the transaction is coinbase)
+    bool pruned = res.txs.front().prunable_as_hex.empty() && res.txs.front().prunable_hash != epee::string_tools::pod_to_hex(crypto::null_hash) && res.txs.front().prunable_hash != empty_hash;
+    if (res.txs.front().in_pool)
+      tools::success_msg_writer() << "Found in pool";
+    else
+      tools::success_msg_writer() << "Found in blockchain at height " << res.txs.front().block_height << (pruned ? " (pruned)" : "");
 
-    const std::string &as_hex = (1 == res.txs.size()) ? res.txs.front().as_hex : res.txs_as_hex.front();
-    const std::string &pruned_as_hex = (1 == res.txs.size()) ? res.txs.front().pruned_as_hex : "";
-    const std::string &prunable_as_hex = (1 == res.txs.size()) ? res.txs.front().prunable_as_hex : "";
+    const std::string &as_hex = res.txs.front().as_hex;
+    const std::string &pruned_as_hex = res.txs.front().pruned_as_hex;
+    const std::string &prunable_as_hex = res.txs.front().prunable_as_hex;
     // Print metadata if requested
     if (include_metadata)
     {
@@ -2314,13 +2310,14 @@ bool t_rpc_command_executor::sync_info()
     return true;
 }
 
-bool t_rpc_command_executor::pop_blocks(uint64_t num_blocks)
+bool t_rpc_command_executor::pop_blocks(uint64_t num_blocks, bool keep_txs)
 {
   cryptonote::COMMAND_RPC_POP_BLOCKS::request req;
   cryptonote::COMMAND_RPC_POP_BLOCKS::response res;
   std::string fail_message = "pop_blocks failed";
 
   req.nblocks = num_blocks;
+  req.keep_txs = keep_txs;
   if (m_is_rpc)
   {
     if (!m_rpc_client->rpc_request(req, res, "/pop_blocks", fail_message.c_str()))
@@ -2468,47 +2465,6 @@ bool t_rpc_command_executor::flush_cache(bool bad_blocks)
             return true;
         }
     }
-
-    return true;
-}
-
-bool t_rpc_command_executor::rpc_payments()
-{
-    cryptonote::COMMAND_RPC_ACCESS_DATA::request req;
-    cryptonote::COMMAND_RPC_ACCESS_DATA::response res;
-    std::string fail_message = "Unsuccessful";
-    epee::json_rpc::error error_resp;
-
-    if (m_is_rpc)
-    {
-        if (!m_rpc_client->json_rpc_request(req, res, "rpc_access_data", fail_message.c_str()))
-        {
-            return true;
-        }
-    }
-    else
-    {
-        if (!m_rpc_server->on_rpc_access_data(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
-        {
-            tools::fail_msg_writer() << make_error(fail_message, res.status);
-            return true;
-        }
-    }
-
-    const uint64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    uint64_t balance = 0;
-    tools::msg_writer() << boost::format("%64s %16u %16u %8u %8u %8u %8u %s")
-        % "Client ID" % "Balance" % "Total mined" % "Good" % "Stale" % "Bad" % "Dupes" % "Last update";
-    for (const auto &entry: res.entries)
-    {
-      tools::msg_writer() << boost::format("%64s %16u %16u %8u %8u %8u %8u %s")
-          % entry.client % entry.balance % entry.credits_total
-          % entry.nonces_good % entry.nonces_stale % entry.nonces_bad % entry.nonces_dupe
-          % (entry.last_update_time == 0 ? "never" : get_human_time_ago(entry.last_update_time, now).c_str());
-      balance += entry.balance;
-    }
-    tools::msg_writer() << res.entries.size() << " clients with a total of " << balance << " credits";
-    tools::msg_writer() << "Aggregated client hash rate: " << get_mining_speed(res.hashrate);
 
     return true;
 }

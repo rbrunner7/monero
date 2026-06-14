@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2024, Monero Research Labs
+// Copyright (c) 2016-2026, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 // 
@@ -686,7 +686,7 @@ namespace rct {
     //   the last row is the sum of input commitments from that column - sum output commitments
     //   this shows that sum inputs = sum outputs
     //Ver:    
-    //   verifies the above sig is created corretly
+    //   verifies the above sig is created correctly
     mgSig proveRctMG(const key &message, const ctkeyM & pubs, const ctkeyV & inSk, const ctkeyV &outSk, const ctkeyV & outPk, unsigned int index, const key &txnFeeKey, hw::device &hwdev) {
         //setup vars
         size_t cols = pubs.size();
@@ -801,7 +801,7 @@ namespace rct {
     //   the last row is the sum of input commitments from that column - sum output commitments
     //   this shows that sum inputs = sum outputs
     //Ver:    
-    //   verifies the above sig is created corretly
+    //   verifies the above sig is created correctly
     bool verRctMG(const mgSig &mg, const ctkeyM & pubs, const ctkeyV & outPk, const key &txnFeeKey, const key &message) {
         PERF_TIMER(verRctMG);
         //setup vars
@@ -1541,18 +1541,9 @@ namespace rct {
       }
     }
 
-    //RingCT protocol
-    //genRct: 
-    //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
-    //   columns that are claimed as inputs, and that the sum of inputs  = sum of outputs.
-    //   Also contains masked "amount" and "mask" so the receiver can see how much they received
-    //verRct:
-    //   verifies that all signatures (rangeProogs, MG sig, sum inputs = outputs) are correct
-    //decodeRct: (c.f. https://eprint.iacr.org/2015/1098 section 5.1.1)
-    //   uses the attached ecdh info to find the amounts represented by each output commitment 
-    //   must know the destination private key to find the correct amount, else will return a random number    
     xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeFull, false, "decodeRct called on non-full rctSig");
+        CHECK_AND_ASSERT_MES(rv.type != RCTTypeNull && rv.type <= RCTTypeBulletproofPlus,
+          false, "decodeRct called on unrecognized rctSig type");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
@@ -1573,42 +1564,14 @@ namespace rct {
         if (equalKeys(C, Ctmp) == false) {
             CHECK_AND_ASSERT_THROW_MES(false, "warning, amount decoded incorrectly, will be unable to spend");
         }
-        return h2d(amount);
+        rct::xmr_amount amount_8;
+        CHECK_AND_ASSERT_THROW_MES(h2d(amount_8, amount),
+          "long decoded amount contains superfluous data");
+        return amount_8;
     }
 
     xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev) {
       key mask;
       return decodeRct(rv, sk, i, mask, hwdev);
-    }
-
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
-            false, "decodeRct called on non simple rctSig");
-        CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
-        CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
-
-        //mask amount and mask
-        ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
-        mask = ecdh_info.mask;
-        key amount = ecdh_info.amount;
-        key C = rv.outPk[i].mask;
-        DP("C");
-        DP(C);
-        key Ctmp;
-        CHECK_AND_ASSERT_THROW_MES(sc_check(mask.bytes) == 0, "warning, bad ECDH mask");
-        CHECK_AND_ASSERT_THROW_MES(sc_check(amount.bytes) == 0, "warning, bad ECDH amount");
-        addKeys2(Ctmp, mask, amount, H);
-        DP("Ctmp");
-        DP(Ctmp);
-        if (equalKeys(C, Ctmp) == false) {
-            CHECK_AND_ASSERT_THROW_MES(false, "warning, amount decoded incorrectly, will be unable to spend");
-        }
-        return h2d(amount);
-    }
-
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev) {
-      key mask;
-      return decodeRctSimple(rv, sk, i, mask, hwdev);
     }
 }

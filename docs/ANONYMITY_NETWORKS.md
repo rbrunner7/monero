@@ -49,14 +49,14 @@ You may sync the blockchain using a SOCKS4 proxy. Monerod will connect to IPv4
 nodes using this proxy to sync the blockchain.
 
 ```bash
-monerod --proxy 127.0.0.1:9050 --p2p-bind-ip 127.0.0.1 --no-igd
+monerod --proxy 127.0.0.1:9050 --p2p-bind-ip 127.0.0.1
 ```
 
 You can also combine `--proxy` with `--tx-proxy` (see below).
 
 ### Hidden Services
 
-Hidden services - onion and I2P domains - are available to use for transation broadcasts.
+Hidden services - onion and I2P domains - are available to use for transaction broadcasts.
 You may use the below options with or without `--proxy`.
 
 #### Outbound Connections
@@ -213,7 +213,7 @@ connections. Your ISP will see that you are running Tor, but not Monerod.
 ```bash
 sudo apt install tor # Or install Tor some other way
 systemctl start tor # Or start Tor manually
-monerod --proxy 127.0.0.1:9050 --p2p-bind-ip 127.0.0.1 --no-igd
+monerod --proxy 127.0.0.1:9050 --p2p-bind-ip 127.0.0.1
 ```
 
 ### Connect to IPv4 Nodes Over Tor and Connect to Hidden Services
@@ -225,7 +225,6 @@ connections (including from Tor and I2P).
 ```bash
 monerod --proxy 127.0.0.1:9050 \
     --p2p-bind-ip 127.0.0.1 \
-    --no-igd \
     --tx-proxy tor,127.0.0.1:9050,10 \
     --tx-proxy i2p,127.0.0.1:4447,10
 ```
@@ -237,7 +236,6 @@ You will need to configure [hidden services manually for Tor and I2P](https://do
 ```bash
 monerod --proxy 127.0.0.1:9050 \
     --p2p-bind-ip 127.0.0.1 \
-    --no-igd \
     --tx-proxy tor,127.0.0.1:9050,10 \
     --tx-proxy i2p,127.0.0.1:4447,10 \
     --anonymous-inbound=yourlongv3onionaddress.onion:18084,127.0.0.1:18084 \
@@ -320,7 +318,7 @@ persistent public key identity - the creation of a new circuit will generate
 a new public key identity. The lock time on a change address is ~20 minutes, so
 `monerod` will have rotated its selected outgoing connections several times in
 most cases. However, the number of outgoing connections is typically a small
-fixed number, so there is a decent probability of re-use with the same public
+fixed number, so there is a decent probability of reuse with the same public
 key identity.
 
 @secparam ([Twitter](https://twitter.com/secparam/status/1153411968147042304)) recommended changing circuits (Tor) as an additional

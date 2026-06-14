@@ -37,7 +37,6 @@
 #include "common/pod-class.h"
 #include "generic-ops.h"
 #include "hex.h"
-#include "span.h"
 
 namespace crypto {
 

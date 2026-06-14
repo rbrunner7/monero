@@ -49,6 +49,7 @@
 #include "common/pruning.h"
 #include "common/util.h"
 #include "misc_log_ex.h"
+#include "scope_guard.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.cn"
@@ -90,8 +91,6 @@ namespace cryptonote
     const bool allow_pruned,
     cryptonote::pool_supplement& pool_supplement)
   {
-    pool_supplement.nic_verified_hf_version = 0;
-
     if (tx_entries.size() > blk_tx_hashes.size())
     {
       MERROR("Failed to make pool supplement: Too many transaction blobs!");
@@ -119,7 +118,7 @@ namespace cryptonote
       if (is_pruned)
       {
         if ((parse_success = cryptonote::parse_and_validate_tx_base_from_blob(tx_entry.blob, tx)))
-          tx_hash = cryptonote::get_pruned_transaction_hash(tx, tx_entry.prunable_hash);
+          parse_success = cryptonote::get_pruned_transaction_hash(tx, tx_entry.prunable_hash, tx_hash);
       }
       else
       {
@@ -139,7 +138,7 @@ namespace cryptonote
         return false;
       }
 
-      pool_supplement.txs_by_txid.emplace(tx_hash, std::make_pair(std::move(tx), tx_entry.blob));
+      pool_supplement.add_tx(tx_hash, std::move(tx), tx_entry.blob);
     }
 
     return true;
@@ -903,18 +902,6 @@ namespace cryptonote
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_NEW_TRANSACTIONS (" << arg.txs.size() << " txes)");
-    std::unordered_set<blobdata> seen;
-    for (const auto &blob: arg.txs)
-    {
-      MLOGIF_P2P_MESSAGE(cryptonote::transaction tx; crypto::hash hash; bool ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash);, ret, "Including transaction " << hash);
-      if (seen.find(blob) != seen.end())
-      {
-        LOG_PRINT_CCONTEXT_L1("Duplicate transaction in notification, dropping connection");
-        drop_connection(context, false, false);
-        return 1;
-      }
-      seen.insert(blob);
-    }
 
     if(context.m_state != cryptonote_connection_context::state_normal)
       return 1;
@@ -926,6 +913,19 @@ namespace cryptonote
     {
       LOG_DEBUG_CC(context, "Received new tx while syncing, ignored");
       return 1;
+    }
+
+    std::unordered_set<blobdata> seen;
+    for (const auto &blob: arg.txs)
+    {
+      MLOGIF_P2P_MESSAGE(cryptonote::transaction tx; crypto::hash hash; bool ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash);, ret, "Including transaction " << hash);
+      if (seen.find(blob) != seen.end())
+      {
+        LOG_PRINT_CCONTEXT_L1("Duplicate transaction in notification, dropping connection");
+        drop_connection(context, false, false);
+        return 1;
+      }
+      seen.insert(blob);
     }
 
     /* If the txes were received over i2p/tor, the default is to "forward"
@@ -1279,10 +1279,6 @@ namespace cryptonote
 
       const crypto::hash last_block_hash = cryptonote::get_block_hash(b);
       context.m_last_known_hash = last_block_hash;
-
-      if (!m_core.get_test_drop_download() || !m_core.get_test_drop_download_height()) { // DISCARD BLOCKS for testing
-        return 1;
-      }
     }
 
     try_add_next_blocks(context);
@@ -1493,14 +1489,28 @@ namespace cryptonote
             return 1;
           }
 
+          bool stopped = false;
+          epee::unique_scope_guard cleanup_on_exit = [this, &stopped, &context, span_connection_id, start_height]() {
+            if (!m_core.cleanup_handle_incoming_blocks())
+            {
+              LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
+              return;
+            }
+
+            if (stopped)
+              return;
+
+            m_block_queue.remove_spans(span_connection_id, start_height);
+          };
+
           uint64_t block_process_time_full = 0, transactions_process_time_full = 0;
           size_t num_txs = 0, blockidx = 0;
           for(const block_complete_entry& block_entry: blocks)
           {
             if (m_stopping)
             {
-                m_core.cleanup_handle_incoming_blocks();
-                return 1;
+              stopped = true;
+              return 1;
             }
 
             // process transactions
@@ -1519,13 +1529,6 @@ namespace cryptonote
                 }))
                   LOG_ERROR_CCONTEXT("span connection id not found");
 
-                if (!m_core.cleanup_handle_incoming_blocks())
-                {
-                  LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
-                  return 1;
-                }
-                // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-                m_block_queue.remove_spans(span_connection_id, start_height);
                 return 1;
             }
             TIME_MEASURE_FINISH(transactions_process_time);
@@ -1552,14 +1555,6 @@ namespace cryptonote
               }))
                 LOG_ERROR_CCONTEXT("span connection id not found");
 
-              if (!m_core.cleanup_handle_incoming_blocks())
-              {
-                LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
-                return 1;
-              }
-
-              // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-              m_block_queue.remove_spans(span_connection_id, start_height);
               return 1;
             }
             if(bvc.m_marked_as_orphaned)
@@ -1572,14 +1567,6 @@ namespace cryptonote
               }))
                 LOG_ERROR_CCONTEXT("span connection id not found");
 
-              if (!m_core.cleanup_handle_incoming_blocks())
-              {
-                LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
-                return 1;
-              }
-
-              // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-              m_block_queue.remove_spans(span_connection_id, start_height);
               return 1;
             }
 
@@ -1591,13 +1578,7 @@ namespace cryptonote
 
           MDEBUG(context << "Block process time (" << blocks.size() << " blocks, " << num_txs << " txs): " << block_process_time_full + transactions_process_time_full << " (" << transactions_process_time_full << "/" << block_process_time_full << ") ms");
 
-          if (!m_core.cleanup_handle_incoming_blocks())
-          {
-            LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
-            return 1;
-          }
-
-          m_block_queue.remove_spans(span_connection_id, start_height);
+          cleanup_on_exit.reset();
 
           const uint64_t current_blockchain_height = m_core.get_current_blockchain_height();
           if (current_blockchain_height > previous_height)
@@ -2742,10 +2723,10 @@ skip:
     m_p2p->for_each_connection([&](const connection_context &ctx, nodetool::peerid_type peer_id, uint32_t support_flags) {
       const uint32_t stripe = tools::get_pruning_stripe(ctx.m_pruning_seed);
       char state_char = cryptonote::get_protocol_state_char(ctx.m_state);
-      ss << stripe + state_char;
+      ss << stripe << state_char;
       if (ctx.m_last_request_time != boost::date_time::not_a_date_time)
         ss << (((now - ctx.m_last_request_time).total_microseconds() > IDLE_PEER_KICK_TIME) ? "!" : "?");
-      ss <<  + " ";
+      ss << " ";
       return true;
     });
     return ss.str();

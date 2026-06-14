@@ -26,6 +26,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+if(OSSFUZZ)
 # Add the include path for <fuzzer/FuzzedDataProvider.h>
 include_directories(${CMAKE_SOURCE_DIR}/tests/fuzz/include)
 
@@ -94,6 +95,7 @@ target_link_libraries(fuzz_zmq
 set_property(TARGET fuzz_zmq
   PROPERTY
     FOLDER "tests")
+endif()
 
 monero_add_minimal_executable(block_fuzz_tests block.cpp fuzzer.cpp)
 target_link_libraries(block_fuzz_tests
@@ -226,7 +228,6 @@ target_link_libraries(http-client_fuzz_tests
   PRIVATE
     epee
     ${Boost_THREAD_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${Boost_REGEX_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}
@@ -243,7 +244,6 @@ target_link_libraries(levin_fuzz_tests
     common
     epee
     ${Boost_THREAD_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${Boost_REGEX_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -259,7 +259,6 @@ target_link_libraries(bulletproof_fuzz_tests
     common
     epee
     ${Boost_THREAD_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${Boost_REGEX_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -276,7 +275,6 @@ target_link_libraries(tx-extra_fuzz_tests
     common
     epee
     ${Boost_THREAD_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${Boost_REGEX_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}
@@ -293,7 +291,6 @@ target_link_libraries(utf8_fuzz_tests
     common
     epee
     ${Boost_THREAD_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES}
     $ENV{LIB_FUZZING_ENGINE})

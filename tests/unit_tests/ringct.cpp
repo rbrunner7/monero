@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2026, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -351,7 +351,7 @@ TEST(ringct, range_proofs)
         ASSERT_TRUE(verRctSimple(s));
 
         //decode received amount
-        decodeRctSimple(s, amount_keys[1], 1, mask, hw::get_device("default"));
+        decodeRct(s, amount_keys[1], 1, mask, hw::get_device("default"));
 
         // Ring CT with failing MG sig part should not verify!
         // Since sum of inputs != outputs
@@ -368,7 +368,7 @@ TEST(ringct, range_proofs)
         ASSERT_FALSE(verRctSimple(s));
 
         //decode received amount
-        decodeRctSimple(s, amount_keys[1], 1, mask, hw::get_device("default"));
+        decodeRct(s, amount_keys[1], 1, mask, hw::get_device("default"));
 }
 
 TEST(ringct, range_proofs_with_fee)
@@ -416,7 +416,7 @@ TEST(ringct, range_proofs_with_fee)
         ASSERT_TRUE(verRctSimple(s));
 
         //decode received amount
-        decodeRctSimple(s, amount_keys[1], 1, mask, hw::get_device("default"));
+        decodeRct(s, amount_keys[1], 1, mask, hw::get_device("default"));
 
         // Ring CT with failing MG sig part should not verify!
         // Since sum of inputs != outputs
@@ -433,7 +433,7 @@ TEST(ringct, range_proofs_with_fee)
         ASSERT_FALSE(verRctSimple(s));
 
         //decode received amount
-        decodeRctSimple(s, amount_keys[1], 1, mask, hw::get_device("default"));
+        decodeRct(s, amount_keys[1], 1, mask, hw::get_device("default"));
 }
 
 TEST(ringct, simple)
@@ -492,7 +492,7 @@ TEST(ringct, simple)
         ASSERT_TRUE(verRctSimple(s));
 
         //decode received amount corresponding to output pubkey index 1
-        decodeRctSimple(s, amount_keys[1], 1, mask,  hw::get_device("default"));
+        decodeRct(s, amount_keys[1], 1, mask,  hw::get_device("default"));
 }
 
 static rct::rctSig make_sample_rct_sig(int n_inputs, const uint64_t input_amounts[], int n_outputs, const uint64_t output_amounts[], bool last_is_fee)
@@ -974,11 +974,13 @@ static const xmr_amount test_amounts[]={0, 1, 2, 3, 4, 5, 10000, 100000000000000
 
 TEST(ringct, d2h)
 {
-  key k, P1;
-  skpkGen(k, P1);
+  key k = skGen();
+  memset(k.bytes + 8, 0, sizeof(k) - 8);
   for (auto amount: test_amounts) {
     d2h(k, amount);
-    ASSERT_TRUE(amount == h2d(k));
+    xmr_amount h2d_amount;
+    ASSERT_TRUE(h2d(h2d_amount, k));
+    ASSERT_EQ(h2d_amount, amount);
   }
 }
 

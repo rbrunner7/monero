@@ -1222,9 +1222,11 @@ namespace wallet_rpc
     struct request_t
     {
       bool hard;
+      bool keep_key_images;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_OPT(hard, false)
+        KV_SERIALIZE_OPT(keep_key_images, false)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -2478,24 +2480,6 @@ namespace wallet_rpc
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(n_outputs)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
-  struct COMMAND_RPC_FINALIZE_MULTISIG
-  {
-    // NOP
-    struct request_t
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct response_t
-    {
-      BEGIN_KV_SERIALIZE_MAP()
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

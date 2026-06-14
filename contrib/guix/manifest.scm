@@ -276,13 +276,15 @@ chain for " target " development."))
            (list
              gcc-toolchain-14
              (list gcc-toolchain-14 "static")
-             (make-monero-cross-toolchain target)))
+             (if (string-contains target "loongarch64")
+               (make-monero-cross-toolchain target #:base-libc glibc)
+               (make-monero-cross-toolchain target))))
           ((string-contains target "freebsd")
            (list
              xz ; used to unpack freebsd_base
              gcc-toolchain-14
              (list gcc-toolchain-14 "static")
-             clang-toolchain-19
+             clang-toolchain-21
              binutils))
           ((string-contains target "android")
             (list
@@ -292,7 +294,7 @@ chain for " target " development."))
           ((string-contains target "darwin")
            (list
              gcc-toolchain-14
-             clang-toolchain-19
-             lld-19
-             (make-lld-wrapper lld-19 #:lld-as-ld? #t)))
+             clang-toolchain-21
+             lld-21
+             (make-lld-wrapper lld-21 #:lld-as-ld? #t)))
           (else '())))))

@@ -59,10 +59,6 @@
 #include "net/parse.h"
 #include "p2p/net_node.h"
 
-#include <miniupnp/miniupnpc/miniupnpc.h>
-#include <miniupnp/miniupnpc/upnpcommands.h>
-#include <miniupnp/miniupnpc/upnperrors.h>
-
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.p2p"
 
@@ -206,8 +202,8 @@ namespace nodetool
       {
         if (now >= it->second)
         {
-          it = m_blocked_subnets.erase(it);
           MCLOG_CYAN(el::Level::Info, "global", "Subnet " << it->first.host_str() << " unblocked.");
+          it = m_blocked_subnets.erase(it);
           continue;
         }
         if (it->first.matches(ipv4_address))
@@ -428,8 +424,9 @@ namespace nodetool
   {
     bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
     bool stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
+    bool regtest = command_line::get_arg(vm, cryptonote::arg_regtest_on);
     const bool pad_txs = command_line::get_arg(vm, arg_pad_transactions);
-    m_nettype = testnet ? cryptonote::TESTNET : stagenet ? cryptonote::STAGENET : cryptonote::MAINNET;
+    m_nettype = testnet ? cryptonote::TESTNET : stagenet ? cryptonote::STAGENET : regtest ? cryptonote::FAKECHAIN : cryptonote::MAINNET;
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
     public_zone.m_connect = &public_connect;
@@ -440,34 +437,9 @@ namespace nodetool
     public_zone.m_can_pingback = true;
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
-    const bool has_no_igd = command_line::get_arg(vm, arg_no_igd);
-    const std::string sigd = command_line::get_arg(vm, arg_igd);
-    if (sigd == "enabled")
+    if (!command_line::is_arg_defaulted(vm, arg_igd))
     {
-      if (has_no_igd)
-      {
-        MFATAL("Cannot have both --" << arg_no_igd.name << " and --" << arg_igd.name << " enabled");
-        return false;
-      }
-      m_igd = igd;
-    }
-    else if (sigd == "disabled")
-    {
-      m_igd =  no_igd;
-    }
-    else if (sigd == "delayed")
-    {
-      if (has_no_igd && !command_line::is_arg_defaulted(vm, arg_igd))
-      {
-        MFATAL("Cannot have both --" << arg_no_igd.name << " and --" << arg_igd.name << " delayed");
-        return false;
-      }
-      m_igd = has_no_igd ? no_igd : delayed_igd;
-    }
-    else
-    {
-      MFATAL("Invalid value for --" << arg_igd.name << ", expected enabled, disabled or delayed");
-      return false;
+      MWARNING("UPnP port mapping support was removed. The --igd option is currently non-functional.");
     }
     m_offline = command_line::get_arg(vm, cryptonote::arg_offline);
     m_use_ipv6 = command_line::get_arg(vm, arg_p2p_use_ipv6);
@@ -774,6 +746,10 @@ namespace nodetool
     {
       return get_ip_seed_nodes();
     }
+    if (m_nettype == cryptonote::FAKECHAIN)
+    {
+      return {};
+    }
     if (!m_enable_dns_seed_nodes)
     {
       // TODO: a domain can be set through socks, so that the remote side does the lookup for the DNS seed nodes.
@@ -788,8 +764,14 @@ namespace nodetool
     // TODO: at some point add IPv6 support, but that won't be relevant
     // for some time yet.
 
-    std::vector<std::vector<std::string>> dns_results;
-    dns_results.resize(m_seed_nodes_list.size());
+    struct frame_t
+    {
+      std::vector<std::vector<std::string>> dns_results;
+      boost::mutex sync;
+    };
+
+    const auto frame = std::make_shared<frame_t>();
+    frame->dns_results.resize(m_seed_nodes_list.size());
 
     // some libc implementation provide only a very small stack
     // for threads, e.g. musl only gives +- 80kb, which is not
@@ -800,32 +782,22 @@ namespace nodetool
 
     std::list<boost::thread> dns_threads;
     uint64_t result_index = 0;
+    const std::weak_ptr<frame_t> frame_weak{frame};
     for (const std::string& addr_str : m_seed_nodes_list)
     {
-      boost::thread th = boost::thread(thread_attributes, [=, &dns_results, &addr_str]
+      boost::thread th = boost::thread(thread_attributes, [frame_weak, addr_str, result_index]
       {
         MDEBUG("dns_threads[" << result_index << "] created for: " << addr_str);
         // TODO: care about dnssec avail/valid
         bool avail, valid;
-        std::vector<std::string> addr_list;
-
-        try
-        {
-          addr_list = tools::DNSResolver::instance().get_ipv4(addr_str, avail, valid);
-          MDEBUG("dns_threads[" << result_index << "] DNS resolve done");
-          boost::this_thread::interruption_point();
-        }
-        catch(const boost::thread_interrupted&)
-        {
-          // thread interruption request
-          // even if we now have results, finish thread without setting
-          // result variables, which are now out of scope in main thread
-          MWARNING("dns_threads[" << result_index << "] interrupted");
-          return;
-        }
-
+        std::vector<std::string> addr_list = tools::DNSResolver::instance().get_ipv4(addr_str, avail, valid);
         MINFO("dns_threads[" << result_index << "] addr_str: " << addr_str << "  number of results: " << addr_list.size());
-        dns_results[result_index] = addr_list;
+        const auto frame = frame_weak.lock();
+        if (frame)
+        {
+          const boost::lock_guard<boost::mutex> lock{frame->sync};
+          frame->dns_results.at(result_index) = std::move(addr_list);
+        }
       });
 
       dns_threads.push_back(std::move(th));
@@ -839,14 +811,15 @@ namespace nodetool
     {
       if (! th.try_join_until(deadline))
       {
-        MWARNING("dns_threads[" << i << "] timed out, sending interrupt");
-        th.interrupt();
+        MWARNING("dns_threads[" << i << "] timed out");
+        th.detach();
       }
       ++i;
     }
 
     i = 0;
-    for (const auto& result : dns_results)
+    const boost::lock_guard<boost::mutex> lock{frame->sync};
+    for (const auto& result : frame->dns_results)
     {
       MDEBUG("DNS lookup for " << m_seed_nodes_list[i] << ": " << result.size() << " results");
       // if no results for node, thread's lookup likely timed out
@@ -1018,16 +991,6 @@ namespace nodetool
     if(m_external_port)
       MDEBUG("External port defined as " << m_external_port);
 
-    // add UPnP port mapping
-    if(m_igd == igd)
-    {
-      add_upnp_port_mapping_v4(m_listening_port);
-      if (m_use_ipv6)
-      {
-        add_upnp_port_mapping_v6(m_listening_port_ipv6);
-      }
-    }
-
     return res;
   }
   //-----------------------------------------------------------------------------------
@@ -1081,7 +1044,7 @@ namespace nodetool
     boost::thread::attributes attrs;
     attrs.set_stack_size(THREAD_STACK_SIZE);
     //go to loop
-    MINFO("Run net_service loop( " << thrds_count << " threads)...");
+    MINFO("Run net_service loop (" << thrds_count << " threads)...");
     if(!public_zone.m_net_server.run_server(thrds_count, true, attrs))
     {
       LOG_ERROR("Failed to run net tcp server!");
@@ -1109,9 +1072,6 @@ namespace nodetool
     {
       for(auto& zone : m_network_zones)
         zone.second.m_net_server.deinit_server();
-      // remove UPnP port mapping
-      if(m_igd == igd)
-        delete_upnp_port_mapping(m_listening_port);
     }
     return store_config();
   }
@@ -1144,29 +1104,46 @@ namespace nodetool
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::send_stop_signal()
   {
-    MDEBUG("[node] sending stop signal");
+    if (m_stop_signal_sent_once.exchange(true))
+    {
+      MDEBUG("[node] Stop signal already sent");
+      return true;
+    }
+    MDEBUG("[node] stopping server payload handler");
+    m_payload_handler.stop();
+
+    MDEBUG("[node] marking net servers as stopping");
     for (auto& zone : m_network_zones)
     {
-      const auto close_all_connections = [&, this]()
-      {
-        std::list<boost::uuids::uuid> connection_ids;
-        zone.second.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt) {
-          connection_ids.push_back(cntxt.m_connection_id);
-          return true;
-        });
-        for (const auto &connection_id: connection_ids)
-        {
-          MDEBUG("Closing connection " << connection_id);
-          // We need to wait for every connection's shutdown sequence to complete before stopping the io_context.
-          zone.second.m_net_server.get_config_object().close(connection_id, true/*wait_for_shutdown*/);
-          MDEBUG("Closed connection " << connection_id);
-        }
-      };
+      zone.second.m_net_server.mark_stop_signal_sent();
+    }
 
-      zone.second.m_net_server.send_stop_signal(close_all_connections);
+    MDEBUG("[node] closing connections");
+    for (auto& zone : m_network_zones)
+    {
+      zone.second.m_net_server.close_server_connections();
+
+      std::list<boost::uuids::uuid> connection_ids;
+      zone.second.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      {
+        connection_ids.push_back(cntxt.m_connection_id);
+        return true;
+      });
+      for (const auto &connection_id: connection_ids)
+      {
+        MDEBUG("Closing connection " << connection_id);
+        // All zone connections must finish shutting down before any shared io_context is stopped.
+        zone.second.m_net_server.get_config_object().close(connection_id, true/*wait_for_shutdown*/);
+        MDEBUG("Closed connection " << connection_id);
+      }
+    }
+
+    MDEBUG("[node] stopping net server io_contexts");
+    for (auto& zone : m_network_zones)
+    {
+      zone.second.m_net_server.stop_io_context();
     }
     MDEBUG("[node] Stop signal sent");
-    m_payload_handler.stop();
     return true;
   }
   //-----------------------------------------------------------------------------------
@@ -1626,7 +1603,7 @@ namespace nodetool
 
     std::set<uint64_t> tried_peers;  // all peers ever tried
 
-    // Outer try loop, with up to 3 attempts to actually connect to a suitable randomly choosen candidate
+    // Outer try loop, with up to 3 attempts to actually connect to a suitable randomly chosen candidate
     size_t outer_loop_count = 0;
     while ((outer_loop_count < 3) && !zone.m_net_server.is_stop_signal_sent())
     {
@@ -2206,17 +2183,8 @@ namespace nodetool
       }
       else
       {
-        if (m_igd == delayed_igd)
-        {
-          MWARNING("No incoming connections, trying to setup IGD");
-          add_upnp_port_mapping(m_listening_port);
-          m_igd = igd;
-        }
-        else
-        {
-          const el::Level level = el::Level::Warning;
-          MCLOG_RED(level, "global", "No incoming connections - check firewalls/routers allow port " << get_this_peer_port());
-        }
+        const el::Level level = el::Level::Warning;
+        MCLOG_RED(level, "global", "No incoming connections - check firewalls/routers allow port " << get_this_peer_port());
       }
     }
     return true;
@@ -3073,139 +3041,6 @@ namespace nodetool
     MINFO("clearing used stripe peers");
     for (auto &e: m_used_stripe_peers)
       e.clear();
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_impl(uint32_t port, bool ipv6) // if ipv6 false, do ipv4
-  {
-    std::string ipversion = ipv6 ? "(IPv6)" : "(IPv4)";
-    MDEBUG("Attempting to add IGD port mapping " << ipversion << ".");
-    int result;
-    const int ipv6_arg = ipv6 ? 1 : 0;
-
-#if MINIUPNPC_API_VERSION > 13
-    // default according to miniupnpc.h
-    unsigned char ttl = 2;
-    UPNPDev* deviceList = upnpDiscover(1000, NULL, NULL, 0, ipv6_arg, ttl, &result);
-#else
-    UPNPDev* deviceList = upnpDiscover(1000, NULL, NULL, 0, ipv6_arg, &result);
-#endif
-    UPNPUrls urls;
-    IGDdatas igdData;
-    char lanAddress[64];
-    result = UPNP_GetValidIGD(deviceList, &urls, &igdData, lanAddress, sizeof lanAddress);
-    freeUPNPDevlist(deviceList);
-    if (result > 0) {
-      if (result == 1) {
-        std::ostringstream portString;
-        portString << port;
-
-        // Delete the port mapping before we create it, just in case we have dangling port mapping from the daemon not being shut down correctly
-        UPNP_DeletePortMapping(urls.controlURL, igdData.first.servicetype, portString.str().c_str(), "TCP", 0);
-
-        int portMappingResult;
-        portMappingResult = UPNP_AddPortMapping(urls.controlURL, igdData.first.servicetype, portString.str().c_str(), portString.str().c_str(), lanAddress, CRYPTONOTE_NAME, "TCP", 0, "0");
-        if (portMappingResult != 0) {
-          LOG_ERROR("UPNP_AddPortMapping failed, error: " << strupnperror(portMappingResult));
-        } else {
-          MLOG_GREEN(el::Level::Info, "Added IGD port mapping.");
-        }
-      } else if (result == 2) {
-        MWARNING("IGD was found but reported as not connected.");
-      } else if (result == 3) {
-        MWARNING("UPnP device was found but not recognized as IGD.");
-      } else {
-        MWARNING("UPNP_GetValidIGD returned an unknown result code.");
-      }
-
-      FreeUPNPUrls(&urls);
-    } else {
-      MINFO("No IGD was found.");
-    }
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_v4(uint32_t port)
-  {
-    add_upnp_port_mapping_impl(port, false);
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_v6(uint32_t port)
-  {
-    add_upnp_port_mapping_impl(port, true);
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping(uint32_t port, bool ipv4, bool ipv6)
-  {
-    if (ipv4) add_upnp_port_mapping_v4(port);
-    if (ipv6) add_upnp_port_mapping_v6(port);
-  }
-
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_impl(uint32_t port, bool ipv6)
-  {
-    std::string ipversion = ipv6 ? "(IPv6)" : "(IPv4)";
-    MDEBUG("Attempting to delete IGD port mapping " << ipversion << ".");
-    int result;
-    const int ipv6_arg = ipv6 ? 1 : 0;
-#if MINIUPNPC_API_VERSION > 13
-    // default according to miniupnpc.h
-    unsigned char ttl = 2;
-    UPNPDev* deviceList = upnpDiscover(1000, NULL, NULL, 0, ipv6_arg, ttl, &result);
-#else
-    UPNPDev* deviceList = upnpDiscover(1000, NULL, NULL, 0, ipv6_arg, &result);
-#endif
-    UPNPUrls urls;
-    IGDdatas igdData;
-    char lanAddress[64];
-    result = UPNP_GetValidIGD(deviceList, &urls, &igdData, lanAddress, sizeof lanAddress);
-    freeUPNPDevlist(deviceList);
-    if (result > 0) {
-      if (result == 1) {
-        std::ostringstream portString;
-        portString << port;
-
-        int portMappingResult;
-        portMappingResult = UPNP_DeletePortMapping(urls.controlURL, igdData.first.servicetype, portString.str().c_str(), "TCP", 0);
-        if (portMappingResult != 0) {
-          LOG_ERROR("UPNP_DeletePortMapping failed, error: " << strupnperror(portMappingResult));
-        } else {
-          MLOG_GREEN(el::Level::Info, "Deleted IGD port mapping.");
-        }
-      } else if (result == 2) {
-        MWARNING("IGD was found but reported as not connected.");
-      } else if (result == 3) {
-        MWARNING("UPnP device was found but not recognized as IGD.");
-      } else {
-        MWARNING("UPNP_GetValidIGD returned an unknown result code.");
-      }
-
-      FreeUPNPUrls(&urls);
-    } else {
-      MINFO("No IGD was found.");
-    }
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_v4(uint32_t port)
-  {
-    delete_upnp_port_mapping_impl(port, false);
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_v6(uint32_t port)
-  {
-    delete_upnp_port_mapping_impl(port, true);
-  }
-
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping(uint32_t port)
-  {
-    delete_upnp_port_mapping_v4(port);
-    delete_upnp_port_mapping_v6(port);
   }
 
   template<typename t_payload_net_handler>

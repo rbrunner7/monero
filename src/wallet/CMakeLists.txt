@@ -56,7 +56,6 @@ target_link_libraries(wallet
     device_trezor
     net
     ${LMDB_LIBRARY}
-    ${Boost_CHRONO_LIBRARY}
     ${Boost_SERIALIZATION_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_SYSTEM_LIBRARY}
@@ -91,7 +90,6 @@ if(NOT IOS)
       version
       daemonizer
       ${EPEE_READLINE}
-      ${Boost_CHRONO_LIBRARY}
       ${Boost_PROGRAM_OPTIONS_LIBRARY}
       ${Boost_FILESYSTEM_LIBRARY}
       ${Boost_THREAD_LIBRARY}
@@ -104,3 +102,4 @@ if(NOT IOS)
 endif()
 
 add_subdirectory(api)
+add_subdirectory(wallet2_basic)

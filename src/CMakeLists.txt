@@ -30,8 +30,6 @@
 
 if (WIN32 OR STATIC)
   add_definitions(-DSTATICLIB)
-  # miniupnp changed their static define
-  add_definitions(-DMINIUPNP_STATICLIB)
 endif ()
 
 function (monero_private_headers group)
@@ -97,7 +95,6 @@ add_subdirectory(blockchain_db)
 add_subdirectory(mnemonics)
 add_subdirectory(polyseed)
 add_subdirectory(rpc)
-add_subdirectory(seraphis_crypto)
 if(NOT IOS)
   add_subdirectory(serialization)
 endif()

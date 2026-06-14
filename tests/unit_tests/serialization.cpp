@@ -46,6 +46,8 @@
 #include "serialization/containers.h"
 #include "serialization/binary_utils.h"
 #include "wallet/wallet2.h"
+#include "wallet/wallet2_basic/wallet2_boost_serialization.h"
+#include "wallet/wallet2_basic/wallet2_serialization.h"
 #include "gtest/gtest.h"
 #include "unit_tests_utils.h"
 #include "device/device.hpp"
@@ -371,6 +373,20 @@ TEST(Serialization, serializes_vector_int64_as_fixed_int)
   ASSERT_TRUE(serialization::dump_binary(v, blob));
   ASSERT_EQ(57, blob.size());
 }
+
+TEST(Serialization, deserializes_vector_reserve)
+{
+  std::vector<int64_t> v;
+  string blob;
+
+  tools::write_varint(std::back_inserter(blob), unsigned(100));
+  blob.append(std::string(100, 0));
+
+  ASSERT_LT(v.capacity(), 20);
+  ASSERT_FALSE(serialization::parse_binary(blob, v));
+  ASSERT_LT(v.capacity(), 100); // could fail if lib allocates more in reserve call
+}
+
 
 namespace
 {
