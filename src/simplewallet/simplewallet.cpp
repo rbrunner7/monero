@@ -3911,14 +3911,6 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const epee::wi
   }
 }
 //----------------------------------------------------------------------------------------------------
-static bool might_be_partial_seed(const epee::wipeable_string &words)
-{
-  std::vector<epee::wipeable_string> seed;
-
-  words.split(seed);
-  return seed.size() < 24;
-}
-//----------------------------------------------------------------------------------------------------
 static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t &month, uint8_t &day)
 {
   if (heightstr.size() != 10 || heightstr[4] != '-' || heightstr[7] != '-')
@@ -4030,20 +4022,16 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         else
         {
           m_electrum_seed = "";
-          do
+          const char *prompt = "Specify Electrum seed";
+          epee::wipeable_string electrum_seed = input_secure_line(prompt);
+          if (std::cin.eof())
+            return false;
+          if (electrum_seed.empty())
           {
-            const char *prompt = m_electrum_seed.empty() ? "Specify Electrum seed" : "Electrum seed continued";
-            epee::wipeable_string electrum_seed = input_secure_line(prompt);
-            if (std::cin.eof())
-              return false;
-            if (electrum_seed.empty())
-            {
-              fail_msg_writer() << tr("specify a recovery parameter with the --electrum-seed=\"words list here\"");
-              return false;
-            }
-            m_electrum_seed += electrum_seed;
-            m_electrum_seed += ' ';
-          } while (/* might_be_partial_seed(m_electrum_seed) */ false);
+            fail_msg_writer() << tr("specify a recovery parameter with the --electrum-seed=\"words list here\"");
+            return false;
+          }
+          m_electrum_seed = electrum_seed;
         }
       }
 

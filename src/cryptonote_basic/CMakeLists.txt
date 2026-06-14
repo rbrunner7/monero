@@ -72,8 +72,8 @@ target_link_libraries(cryptonote_basic
     cryptonote_format_utils_basic
     device
     ringct_basic
-    ${Boost_CHRONO_LIBRARY}
     polyseed_wrapper
+    ${Boost_CHRONO_LIBRARY}
     ${Boost_DATE_TIME_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_SERIALIZATION_LIBRARY}

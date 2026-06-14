@@ -388,7 +388,8 @@ namespace crypto
       {
         if (e.status() == POLYSEED_ERR_LANG) {
           // Probably a Polyseed, because the number of words is ok, but with some error: Don't try as a legacy seed and stop
-          throw e;
+          MERROR("Invalid seed: Not a valid Polyseed");
+          return false;
         }
       }
       catch (const std::exception &e)
